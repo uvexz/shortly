@@ -40,11 +40,13 @@ interface ShortenResult {
 }
 
 type ShortLinkCreatorMode = "homepage" | "dashboard"
+type ShortLinkCreatorSurface = "card" | "embedded"
 
 interface ShortLinkCreatorProps {
   user: CreatorUser | null
   onCreated?: (result: ShortenResult) => void | Promise<void>
   mode?: ShortLinkCreatorMode
+  surface?: ShortLinkCreatorSurface
   siteName?: string
 }
 
@@ -100,6 +102,7 @@ export function ShortLinkCreator({
   user,
   onCreated,
   mode = "dashboard",
+  surface = "card",
   siteName,
 }: ShortLinkCreatorProps) {
   const isHomepageMode = mode === "homepage"
@@ -262,9 +265,12 @@ export function ShortLinkCreator({
   const showNoDomainWarning = user && !domainsLoading && shortDomains.length < 1
 
   if (!isHomepageMode) {
+    const containerClassName = surface === "embedded" ? "overflow-hidden bg-card" : "overflow-hidden rounded-xl border bg-card"
+    const contentClassName = surface === "embedded" ? "grid gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]" : "grid gap-6 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_18rem]"
+
     return (
-      <section className="overflow-hidden rounded-xl border bg-card">
-        <div className="grid gap-6 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+      <section className={containerClassName}>
+        <div className={contentClassName}>
           <div className="space-y-5">
             <div className="flex flex-col gap-1">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Shorten</p>

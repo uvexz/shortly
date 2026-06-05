@@ -47,7 +47,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { toast } from "sonner"
-import { ArrowLeft, BarChart2, CheckCircle2, Copy, ExternalLink, KeyRound, Link2, Mail, RefreshCw, Shield, Trash2, TrendingUp, Zap } from "lucide-react"
+import { ArrowLeft, BarChart2, Copy, ExternalLink, KeyRound, Link2, Mail, RefreshCw, Shield, Trash2, Zap } from "lucide-react"
 import Link from "next/link"
 import { PasskeyManager } from "@/components/passkey-manager"
 import { ApiManagementPanel } from "@/components/api-management"
@@ -194,6 +194,12 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
         setLinks((prev) => prev.filter((l) => l.id !== id))
         setTotalItems(remainingItems)
         setPendingDeleteLink(null)
+        if (selectedLink?.id === id) {
+          setSelectedLink(null)
+          setLogs([])
+          setLogsError(null)
+          setLogsDialogOpen(false)
+        }
 
         if (deleteState.nextPage !== page) {
           setPage(deleteState.nextPage)
@@ -216,11 +222,13 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
     }
   }
 
-  async function handleViewLogs(link: ShortLink) {
+  async function handleViewLogs(link: ShortLink, options?: { openDialog?: boolean }) {
     setSelectedLink(link)
     setLogs([])
     setLogsError(null)
-    setLogsDialogOpen(true)
+    if (options?.openDialog) {
+      setLogsDialogOpen(true)
+    }
     setLogsLoading(true)
     try {
       const res = await fetch(`/api/logs/${link.id}`)
@@ -253,7 +261,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
       return
     }
 
-    await handleViewLogs(selectedLink)
+    await handleViewLogs(selectedLink, { openDialog: logsDialogOpen })
   }
 
   async function handleCopy(shortUrl: string) {
@@ -278,6 +286,369 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
         : activeTab === "api"
           ? "API 管理"
           : "安全"
+
+  const selectedLinkLogs = selectedLink ? logs : []
+  const selectedLinkBlockedEvents = selectedLinkLogs.filter((log) => log.eventType !== "click").length
+  const selectedLinkLimitText =
+    selectedLink?.maxClicks == null
+      ? "不限"
+      : `${selectedLink.clicks} / ${selectedLink.maxClicks}`
+  const selectedLinkExpirationText = selectedLink?.expiresAt ? formatDate(selectedLink.expiresAt) : "长期有效"
+
+  const linksWorkspace = (
+    <div className="grid min-h-[calc(100vh-8rem)] overflow-hidden rounded-xl border bg-card xl:grid-cols-[minmax(28rem,1fr)_minmax(28rem,0.78fr)]">
+      <section className="flex min-h-0 flex-col border-b xl:border-b-0 xl:border-r">
+        <div className="border-b p-4 sm:p-5">
+          <ShortLinkCreator
+            user={user}
+            mode="dashboard"
+            surface="embedded"
+            onCreated={handleCreated}
+          />
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-semibold tracking-tight">短链列表</h2>
+                {totalItems > 0 && (
+                  <span className="rounded-md bg-muted px-2 py-1 text-[10px] font-medium uppercase text-muted-foreground">
+                    {totalItems} Links
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">选择一条短链查看详情和最近访问日志。</p>
+            </div>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={handleRefreshLinks}
+              disabled={loading}
+              aria-label="刷新短链列表"
+              title="刷新短链列表"
+            >
+              <RefreshCw className={`h-3.5 w-3.5${loading ? " animate-spin" : ""}`} />
+            </Button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-auto">
+            {loading ? (
+              <div className="flex h-full min-h-80 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                正在加载记录...
+              </div>
+            ) : linksError ? (
+              <div className="flex h-full min-h-80 flex-col items-center justify-center gap-4 px-6 text-center">
+                <p className="text-sm text-destructive">{linksError}</p>
+                <Button type="button" variant="outline" size="sm" onClick={handleRefreshLinks}>
+                  重试
+                </Button>
+              </div>
+            ) : links.length === 0 ? (
+              <div className="flex h-full min-h-80 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+                {page > 1 ? "这一页没有短链。" : "创建台准备好了，先生成第一条短链。"}
+              </div>
+            ) : (
+              <div className="divide-y">
+                {links.map((link) => (
+                  <div
+                    key={link.id}
+                    className={`group px-5 py-4 transition-colors hover:bg-muted/35 ${
+                      selectedLink?.id === link.id ? "bg-primary/[0.05] ring-1 ring-inset ring-primary/40" : ""
+                    }`}
+                  >
+                    <div className="flex items-start gap-4">
+                      <button
+                        type="button"
+                        onClick={() => void handleViewLogs(link)}
+                        className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-mono text-sm font-semibold text-primary">
+                              {link.domain}/{link.slug}
+                            </p>
+                            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{link.originalUrl}</p>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={`h-6 shrink-0 px-2 text-[10px] font-medium ${
+                              link.isExpired
+                                ? "border-destructive/30 bg-destructive/5 text-destructive"
+                                : "border-primary/20 bg-primary/5 text-primary"
+                            }`}
+                          >
+                            {link.isExpired ? "已失效" : "有效"}
+                          </Badge>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground">{link.clicks} 次点击</span>
+                          <span>{link.maxClicks == null ? "不限点击" : `上限 ${link.maxClicks}`}</span>
+                          <span>{link.expiresAt ? `过期 ${formatDate(link.expiresAt)}` : "长期有效"}</span>
+                        </div>
+                      </button>
+
+                      <div className="flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => handleCopy(link.shortUrl)}
+                          className="h-8 w-8"
+                          aria-label="复制短链"
+                          title="复制短链"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => void handleViewLogs(link)}
+                          className="h-8 w-8"
+                          aria-label="查看详情"
+                          title="查看详情"
+                        >
+                          <BarChart2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setPendingDeleteLink(link)}
+                          className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                          aria-label="删除短链"
+                          title="删除短链"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {totalPages > 1 && !linksError && (
+            <div className="flex items-center justify-between border-t px-5 py-4">
+              <p className="text-xs font-medium text-muted-foreground">页码 {page} / {totalPages}</p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                  className="h-8"
+                >
+                  上一页
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="h-8"
+                >
+                  下一页
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <aside className="flex min-h-0 flex-col">
+        {!selectedLink ? (
+          <div className="flex min-h-[32rem] flex-1 items-center justify-center px-8 text-center">
+            <div className="max-w-sm space-y-3">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border bg-muted/30">
+                <Link2 className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold">选择一条短链</h3>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  右侧会显示目标地址、有效期、点击状态和最近访问日志。
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-4 border-b px-6 py-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 space-y-2">
+                  <p className="text-xs text-muted-foreground">短链详情</p>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <h3 className="break-all font-mono text-xl font-semibold">{selectedLink.domain}/{selectedLink.slug}</h3>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => handleCopy(selectedLink.shortUrl)}
+                      className="h-7 w-7"
+                      aria-label="复制短链"
+                      title="复制短链"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">创建于 {formatDate(selectedLink.createdAt)}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Badge
+                    variant="outline"
+                    className={selectedLink.isExpired ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-primary/20 bg-primary/5 text-primary"}
+                  >
+                    {selectedLink.isExpired ? "已失效" : "有效"}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setPendingDeleteLink(selectedLink)}
+                    className="text-destructive hover:bg-destructive/10"
+                    aria-label="删除短链"
+                    title="删除短链"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => handleCopy(selectedLink.shortUrl)} className="h-8">
+                  <Copy className="h-3.5 w-3.5" />
+                  复制
+                </Button>
+                <Button variant="outline" size="sm" asChild className="h-8">
+                  <a href={selectedLink.shortUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    打开
+                  </a>
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => void handleViewLogs(selectedLink, { openDialog: true })} className="h-8">
+                  <BarChart2 className="h-3.5 w-3.5" />
+                  展开日志
+                </Button>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
+              <div className="space-y-6">
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold">基本信息</h4>
+                  </div>
+                  <div className="grid gap-3 rounded-lg border bg-muted/15 p-4 text-sm sm:grid-cols-2">
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground">目标链接</p>
+                      <p className="mt-1 break-all text-foreground">{selectedLink.originalUrl}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">短链域名</p>
+                      <p className="mt-1 font-mono">{selectedLink.domain}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">后缀</p>
+                      <p className="mt-1 font-mono">{selectedLink.slug}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">有效期</p>
+                      <p className="mt-1">{selectedLinkExpirationText}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">点击限制</p>
+                      <p className="mt-1">{selectedLinkLimitText}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">失效原因</p>
+                      <p className="mt-1">
+                        {selectedLink.isExpired
+                          ? selectedLink.expiredByClicks
+                            ? "达到点击上限"
+                            : selectedLink.expiredByDate
+                              ? "超过有效期"
+                              : "已失效"
+                          : "无"}
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-sm font-semibold">统计概览</h4>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRefreshLogs}
+                      disabled={logsLoading}
+                      className="h-8"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5${logsLoading ? " animate-spin" : ""}`} />
+                      刷新
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-lg border bg-background px-3 py-3">
+                      <p className="text-xs text-muted-foreground">总点击</p>
+                      <p className="mt-1 text-xl font-semibold tabular-nums">{selectedLink.clicks}</p>
+                    </div>
+                    <div className="rounded-lg border bg-background px-3 py-3">
+                      <p className="text-xs text-muted-foreground">本页日志</p>
+                      <p className="mt-1 text-xl font-semibold tabular-nums">{selectedLinkLogs.length}</p>
+                    </div>
+                    <div className="rounded-lg border bg-background px-3 py-3">
+                      <p className="text-xs text-muted-foreground">拦截事件</p>
+                      <p className="mt-1 text-xl font-semibold tabular-nums">{selectedLinkBlockedEvents}</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="space-y-3">
+                  <h4 className="text-sm font-semibold">最近访问日志</h4>
+                  {logsLoading ? (
+                    <div className="flex h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 text-sm text-muted-foreground">
+                      正在拉取日志...
+                    </div>
+                  ) : logsError ? (
+                    <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-destructive/5 px-4 text-center text-sm text-destructive">
+                      <p>{logsError}</p>
+                      <Button type="button" variant="outline" size="sm" onClick={handleRefreshLogs}>
+                        重试
+                      </Button>
+                    </div>
+                  ) : selectedLinkLogs.length === 0 ? (
+                    <div className="flex h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 text-sm text-muted-foreground">
+                      暂无访问日志。
+                    </div>
+                  ) : (
+                    <div className="overflow-hidden rounded-lg border">
+                      <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-b bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
+                        <span>时间 / 来源</span>
+                        <span>事件</span>
+                        <span>HTTP</span>
+                      </div>
+                      <div className="divide-y">
+                        {selectedLinkLogs.slice(0, 8).map((log) => (
+                          <div key={log.id} className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-3 text-sm">
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-medium">{formatDate(log.createdAt)}</p>
+                              <p className="mt-1 truncate text-xs text-muted-foreground">{log.referrer || "直接访问"} · {log.ipAddress || "未知 IP"}</p>
+                            </div>
+                            <Badge variant="outline" className="h-6 self-center text-[10px]">
+                              {getLogEventLabel(log.eventType)}
+                            </Badge>
+                            <span className="self-center font-mono text-xs text-muted-foreground">{log.statusCode ?? "—"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              </div>
+            </div>
+          </>
+        )}
+      </aside>
+    </div>
+  )
 
   return (
     <>
@@ -375,254 +746,13 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
 
           <main className="flex-1 px-[var(--page-gutter)] py-5 sm:py-6 lg:py-8">
             {activeTab === "links" && (
-              <div className="mx-auto w-full max-w-[92rem] space-y-8 sm:space-y-10">
-                <section className="rounded-xl border bg-card p-4 sm:p-5">
-                  <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="max-w-2xl space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Links workspace</p>
-                      <h2 className="text-2xl font-semibold tracking-tight">短链创建与记录管理</h2>
-                      <p className="text-sm leading-6 text-muted-foreground">
-                        创建入口放在工作区顶部，下面直接管理最近生成的短链，复制、查看日志和删除保持在同一视线内。
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3 lg:min-w-[28rem]">
-                      <div className="rounded-lg border bg-background px-3 py-2">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Link2 className="h-3.5 w-3.5" />
-                          <span className="text-[10px] font-semibold uppercase tracking-[0.12em]">Total</span>
-                        </div>
-                        <p className="mt-1 text-lg font-semibold tabular-nums">{totalItems}</p>
-                      </div>
-                      <div className="rounded-lg border bg-background px-3 py-2">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <TrendingUp className="h-3.5 w-3.5" />
-                          <span className="text-[10px] font-semibold uppercase tracking-[0.12em]">Clicks</span>
-                        </div>
-                        <p className="mt-1 text-lg font-semibold tabular-nums">{links.reduce((acc, link) => acc + link.clicks, 0)}</p>
-                      </div>
-                      <div className="rounded-lg border bg-background px-3 py-2">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          <span className="text-[10px] font-semibold uppercase tracking-[0.12em]">Active</span>
-                        </div>
-                        <p className="mt-1 text-lg font-semibold tabular-nums">{links.filter((link) => !link.isExpired).length}</p>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                <ShortLinkCreator
-                  user={user}
-                  mode="dashboard"
-                  onCreated={handleCreated}
-                />
-
-                <section className="space-y-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-lg font-semibold tracking-tight">短链记录</h2>
-                        {totalItems > 0 && (
-                          <span className="rounded-md bg-muted px-2 py-1 text-[10px] font-medium uppercase text-muted-foreground">
-                           {totalItems} Links
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">最近创建的短链、状态和日志入口。</p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRefreshLinks}
-                      disabled={loading}
-                      className="h-9 w-full sm:w-auto"
-                    >
-                      <RefreshCw className={`h-4 w-4${loading ? " animate-spin" : ""}`} />
-                      刷新
-                    </Button>
-                  </div>
-
-                  <div className="relative">
-                      {loading ? (
-                        <div className="flex h-56 items-center justify-center rounded-xl border border-dashed bg-muted/5 text-sm text-muted-foreground sm:h-64">
-                          正在加载记录...
-                        </div>
-                      ) : linksError ? (
-                        <div className="flex h-56 flex-col items-center justify-center gap-4 rounded-xl border border-dashed bg-destructive/5 px-6 text-center sm:h-64">
-                          <p className="text-sm text-destructive">{linksError}</p>
-                          <Button type="button" variant="outline" size="sm" onClick={handleRefreshLinks}>
-                            重试
-                          </Button>
-                        </div>
-                      ) : links.length === 0 ? (
-                        <div className="flex h-56 items-center justify-center rounded-xl border border-dashed bg-muted/5 px-4 text-center text-sm text-muted-foreground sm:h-64">
-                          {page > 1 ? "这一页没有短链。" : "创建台准备好了，先生成第一条短链。"}
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          {isDesktop ? (
-                            <div className="overflow-hidden rounded-xl border bg-card">
-                              <Table>
-                                <TableHeader className="bg-muted/30">
-                                  <TableRow className="hover:bg-transparent">
-                                    <TableHead className="h-10 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">短链</TableHead>
-                                    <TableHead className="h-10 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">目标</TableHead>
-                                    <TableHead className="h-10 text-center text-[11px] font-bold uppercase tracking-wider text-muted-foreground">状态</TableHead>
-                                    <TableHead className="h-10 text-right text-[11px] font-bold uppercase tracking-wider text-muted-foreground">操作</TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {links.map((link) => (
-                                    <TableRow key={link.id} className="group/row transition-colors">
-                                      <TableCell>
-                                        <div className="flex flex-col gap-0.5">
-                                          <div className="flex items-center gap-1">
-                                            <span className="font-mono text-sm font-semibold text-foreground">/{link.slug}</span>
-                                            <Button
-                                              variant="ghost"
-                                              size="icon-sm"
-                                              onClick={() => handleCopy(link.shortUrl)}
-                                              className="h-6 w-6 opacity-0 transition-opacity group-hover/row:opacity-100"
-                                            >
-                                              <Copy className="h-3.3 w-3.3" />
-                                            </Button>
-                                          </div>
-                                          <span className="truncate text-[10px] text-muted-foreground/70">{link.domain}</span>
-                                        </div>
-                                      </TableCell>
-                                      <TableCell>
-                                        <div className="flex max-w-[240px] items-center gap-1.5">
-                                          <span className="truncate text-xs text-muted-foreground" title={link.originalUrl}>
-                                            {link.originalUrl}
-                                          </span>
-                                          <a
-                                            href={link.originalUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="opacity-0 transition-opacity group-hover/row:opacity-100 hover:text-primary"
-                                          >
-                                            <ExternalLink className="h-3 w-3" />
-                                          </a>
-                                        </div>
-                                      </TableCell>
-                                      <TableCell className="text-center">
-                                        <Badge
-                                          variant="outline"
-                                          className={`h-5 px-2 text-[10px] font-medium transition-colors ${
-                                            link.isExpired
-                                              ? "border-destructive/30 bg-destructive/5 text-destructive"
-                                              : "border-primary/20 bg-primary/5 text-primary"
-                                          }`}
-                                        >
-                                          {link.isExpired ? "已失效" : "有效"}
-                                        </Badge>
-                                      </TableCell>
-                                      <TableCell className="text-right font-mono">
-                                        <div className="flex items-center justify-end gap-3">
-                                          <div className="flex flex-col items-end gap-0.5 mr-2">
-                                            <span className="text-xs font-bold">{link.clicks}</span>
-                                            <span className="text-[9px] text-muted-foreground uppercase opacity-60">CLICKS</span>
-                                          </div>
-                                          <div className="flex gap-1 opacity-0 transition-all group-hover/row:opacity-100 translate-x-1 group-hover/row:translate-x-0">
-                                            <Button
-                                              variant="ghost"
-                                              size="icon-sm"
-                                              onClick={() => handleViewLogs(link)}
-                                              className="h-8 w-8 rounded-lg hover:bg-muted/80"
-                                            >
-                                              <BarChart2 className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                              variant="ghost"
-                                              size="icon-sm"
-                                              onClick={() => setPendingDeleteLink(link)}
-                                              className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10"
-                                            >
-                                              <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                          </div>
-                                        </div>
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            </div>
-                          ) : (
-                            <div className="space-y-3">
-                              {links.map((link) => (
-                                <div key={link.id} className="rounded-xl border bg-card p-4 transition-all hover:border-primary/20 sm:p-5">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0 flex-1 space-y-1">
-                                      <p className="font-mono text-sm font-bold">/{link.slug}</p>
-                                      <p className="truncate text-[10px] text-muted-foreground">{link.domain}</p>
-                                    </div>
-                                    <Badge
-                                      variant="outline"
-                                      className={link.isExpired ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-primary/20 bg-primary/5 text-primary"}
-                                    >
-                                      {link.isExpired ? "已失效" : "有效"}
-                                    </Badge>
-                                  </div>
-                                  <p className="mt-3 truncate text-xs text-muted-foreground">{link.originalUrl}</p>
-                                  <div className="mt-5 flex items-center justify-between border-t pt-4">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="text-sm font-bold">{link.clicks}</span>
-                                      <span className="text-[10px] text-muted-foreground uppercase opacity-60 font-medium">点击次数</span>
-                                    </div>
-                                    <div className="flex gap-1">
-                                       <Button variant="ghost" size="icon-sm" onClick={() => handleCopy(link.shortUrl)}>
-                                        <Copy className="h-4 w-4" />
-                                      </Button>
-                                      <Button variant="ghost" size="icon-sm" onClick={() => handleViewLogs(link)}>
-                                        <BarChart2 className="h-4 w-4" />
-                                      </Button>
-                                      <Button variant="ghost" size="icon-sm" onClick={() => setPendingDeleteLink(link)} className="text-destructive">
-                                        <Trash2 className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {totalPages > 1 && !linksError && (
-                            <div className="flex items-center justify-between border-t pt-6">
-                              <p className="text-xs text-muted-foreground font-medium uppercase tracking-tight">
-                                页码 {page} / {totalPages}
-                              </p>
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={page <= 1}
-                                  onClick={() => setPage((p) => p - 1)}
-                                  className="h-8 rounded-lg border bg-card px-4 text-[11px] font-bold uppercase transition-all hover:bg-muted active:scale-95 disabled:opacity-50"
-                                >
-                                  上一页
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={page >= totalPages}
-                                  onClick={() => setPage((p) => p + 1)}
-                                  className="h-8 rounded-lg border bg-card px-4 text-[11px] font-bold uppercase transition-all hover:bg-muted active:scale-95 disabled:opacity-50"
-                                >
-                                  下一页
-                                </Button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                  </div>
-                </section>
+              <div className="mx-auto w-full max-w-none">
+                {linksWorkspace}
               </div>
             )}
 
             {activeTab === "temp-email" && (
-              <div className="mx-auto w-full max-w-[92rem]">
+              <div className="mx-auto w-full max-w-none">
                 <TempEmailManager />
               </div>
             )}

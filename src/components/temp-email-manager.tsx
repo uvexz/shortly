@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   Dialog,
   DialogContent,
@@ -25,7 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatDate } from "@/lib/utils"
 import { useMediaQuery } from "@/lib/use-media-query"
 import { generateRandomEmailPrefix } from "@/lib/random-email-prefix"
-import { Copy, MailPlus, RefreshCw, Trash2 } from "lucide-react"
+import { Copy, Inbox, MailPlus, RefreshCw, Trash2 } from "lucide-react"
 
 interface MailboxRecord {
   id: string
@@ -288,14 +287,6 @@ function shouldShowMessageMetadata(detail: MessageDetailRecord) {
 
 function renderableHtmlExists(detail: MessageDetailRecord) {
   return Boolean(detail.html.trim())
-}
-
-function getOpenMessageSubjectButtonClassName() {
-  return "truncate text-left text-sm text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-}
-
-function getOpenMessageSubjectMobileButtonClassName() {
-  return "w-full text-left text-sm text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
 }
 
 function getMessageDetailCopy(detail: MessageDetailRecord) {
@@ -871,14 +862,6 @@ function getMessageDetailActionsClassName() {
   return getMessageActionsClassName()
 }
 
-function getMessageOpenSubjectButtonClassName() {
-  return getOpenMessageSubjectButtonClassName()
-}
-
-function getMessageOpenSubjectMobileButtonClassName() {
-  return getOpenMessageSubjectMobileButtonClassName()
-}
-
 function getMessageDetailInlineMutedClassName() {
   return getInlineMutedClassName()
 }
@@ -1238,7 +1221,8 @@ export function TempEmailManager() {
 
   const selectedMessageId = getSelectedMessageIdValue(selectedMessage)
   const selectedDetailTab = getMessageDetailSelectedTab(messageDetail, messageDetailTab)
-  const messageDialogOpen = getMessageDialogOpen(selectedMessage)
+  const hasSelectedMessage = getMessageDialogOpen(selectedMessage)
+  const messageDialogOpen = hasSelectedMessage && !isDesktop
 
   useEffect(() => {
     if (!selectedMailboxId) {
@@ -1440,134 +1424,277 @@ export function TempEmailManager() {
     }
   }
 
-  return (
-    <>
-      <div className="space-y-6">
-        <section className="overflow-hidden rounded-xl border bg-card">
-          <div className="grid gap-6 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
-            <div className="space-y-5">
-              <div className="flex flex-col gap-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Mailbox studio</p>
-                <h2 className="text-2xl font-semibold tracking-tight">生成临时收件箱</h2>
-                <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                  输入可记忆的前缀，或随机生成一个地址。创建后会进入下方邮箱队列，右侧直接查看邮件。
-                </p>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_16rem]">
-                <div className="space-y-2">
-                  <label htmlFor="temp-email-prefix" className="text-sm font-medium">
-                    邮箱前缀
-                  </label>
-                  <Input
-                    id="temp-email-prefix"
-                    aria-label="邮箱前缀"
-                    placeholder="例如 project-test"
-                    value={mailboxInput}
-                    onChange={(e) => setMailboxInput(e.target.value)}
-                    className="h-11"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="temp-email-domain" className="text-sm font-medium">
-                    域名
-                  </label>
-                  <Select value={selectedDomain} onValueChange={setSelectedDomain} disabled={emailDomains.length < 1}>
-                    <SelectTrigger id="temp-email-domain" aria-label="邮箱域名" className="h-11">
-                      <SelectValue placeholder="选择域名" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {emailDomains.map((domain) => (
-                        <SelectItem key={domain.host} value={domain.host}>
-                          {domain.host}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button type="button" variant="outline" onClick={handleGenerateRandomPrefix} className="h-10 flex-1 border-dashed sm:flex-none sm:px-5">
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  随机前缀
-                </Button>
-                <Button onClick={handleCreateMailbox} disabled={!canCreateMailbox} className="h-10 flex-1 sm:flex-none sm:px-6">
-                  <MailPlus className="h-4 w-4" />
-                  {creatingMailbox ? "创建中..." : "创建邮箱"}
-                </Button>
-              </div>
-
-              {mailboxLocalPartTooShort && (
-                <p className="text-xs text-destructive">当前域名要求邮箱前缀至少 {selectedMinLocalPartLength} 个字符。</p>
-              )}
-              {loadingDomains ? (
-                <p className="text-xs text-muted-foreground">正在载入可用邮箱域名...</p>
-              ) : domainsError ? (
-                <div className="flex flex-wrap items-center gap-2 text-xs text-destructive">
-                  <span>{domainsError}</span>
-                  <Button type="button" variant="link" size="sm" onClick={() => fetchDomains()} className="h-auto p-0 text-destructive">
-                    重试
-                  </Button>
-                </div>
-              ) : null}
+  function renderDesktopMessageDetailPanel() {
+    if (!selectedMessage) {
+      return (
+        <div className="flex min-h-0 flex-1 items-center justify-center px-8 text-center">
+          <div className="max-w-sm space-y-3">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border bg-muted/30">
+              <Inbox className="h-5 w-5 text-muted-foreground" />
             </div>
-
-            <aside className="flex min-h-48 flex-col justify-between gap-5 rounded-lg border bg-muted/20 p-4">
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Preview</p>
-                <p className="break-all font-mono text-lg font-semibold leading-snug">
-                  {mailboxPreview || "your-address@domain.com"}
-                </p>
-              </div>
-              <div className="grid gap-2 text-xs text-muted-foreground">
-                <div className="flex items-center justify-between gap-3">
-                  <span>可用域名</span>
-                  <span className="font-medium text-foreground">{emailDomains.length}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span>前缀下限</span>
-                  <span className="font-medium text-foreground">≥ {selectedMinLocalPartLength}</span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span>当前邮箱</span>
-                  <span className="font-medium text-foreground">{mailboxes.length}</span>
-                </div>
-              </div>
-            </aside>
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold">选择一封邮件</h3>
+              <p className="text-sm leading-6 text-muted-foreground">
+                从邮件列表中打开一封邮件后，正文、附件和源码会显示在这里。
+              </p>
+            </div>
           </div>
-        </section>
+        </div>
+      )
+    }
 
-        <div className="grid gap-6 xl:grid-cols-[20rem_minmax(0,1fr)]">
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold tracking-tight">邮箱队列</h3>
-                <p className="text-sm text-muted-foreground">选择一个邮箱查看收件箱。</p>
+    if (loadingMessageDetail) {
+      return <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">{getMessageDetailLoadingCopy()}</div>
+    }
+
+    if (messageDetailError) {
+      return (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-8 text-center text-sm text-destructive">
+          <p>{getMessageDetailErrorCopy(messageDetailError)}</p>
+          <Button type="button" variant={getDetailRetryButtonVariant()} size="sm" onClick={handleRetryMessageDetail}>
+            {getMessageDetailRetryLabel()}
+          </Button>
+        </div>
+      )
+    }
+
+    if (!messageDetail) {
+      return <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">{getSelectedMessageTitle(selectedMessage)}</div>
+    }
+
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="space-y-4 border-b px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              <h3 className="break-words text-lg font-semibold leading-snug">{getMessageTitleForDialog(messageDetail, selectedMessage)}</h3>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="break-all">{getDetailFromLine(messageDetail)}</span>
+                <span>{formatDate(messageDetail.receivedAt)}</span>
               </div>
-              {mailboxes.length > 0 && (
-                <span className="rounded-md bg-muted px-2 py-1 text-[10px] font-medium uppercase text-muted-foreground">
-                  {mailboxes.length} Active
-                </span>
-              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={handleCopyMessageSource}
+                disabled={!messageDetail}
+                aria-label="复制邮件源码"
+                title="复制邮件源码"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="text-destructive hover:bg-destructive/10"
+                onClick={() => selectedMessage && setPendingDeleteMessage(selectedMessage)}
+                disabled={!selectedMessage}
+                aria-label="删除邮件"
+                title="删除邮件"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={getMessageDetailStatusVariant(messageDetail)}>{getMessageDetailStatusText(messageDetail)}</Badge>
+            {messageDetail.hasAttachments && <Badge variant="outline">{getMessageAttachmentBadgeText()}</Badge>}
+            <span className="break-all text-xs text-muted-foreground">收件人：{getDetailMailboxLine(messageDetail)}</span>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
+          <div className="space-y-5">
+            <div className="grid gap-3 rounded-lg border bg-muted/15 p-3 text-sm md:grid-cols-2">
+              <div className="min-w-0">
+                <p className={getMessageDetailMetadataLabelClassName()}>发件人</p>
+                <p className={getMessageDetailMetadataValueClassName()}>{getDetailFromLine(messageDetail)}</p>
+              </div>
+              <div className="min-w-0">
+                <p className={getMessageDetailMetadataLabelClassName()}>接收时间</p>
+                <p className={getMessageDetailMetadataValueClassName()}>{formatDate(messageDetail.receivedAt)}</p>
+              </div>
+              {getDetailMetadataRows(messageDetail).map((item) => (
+                <div key={item.label} className="min-w-0">
+                  <p className={getMessageDetailMetadataLabelClassName()}>{item.label}</p>
+                  <p className={getMessageDetailMetadataValueClassName()}>{item.value}</p>
+                </div>
+              ))}
             </div>
 
+            {hasDetailAttachments(messageDetail) && (
+              <div className="space-y-2">
+                <h4 className={getMessageDetailSectionTitleClassName()}>{getMessageDetailAttachmentTitle()}</h4>
+                <div className={getMessageDetailAttachmentListClassName()}>
+                  {messageDetail.attachments.map((attachment) => (
+                    <div key={getAttachmentKey(attachment)} className={getMessageDetailAttachmentItemClassName()}>
+                      <div className="min-w-0">
+                        <p className="break-all text-sm font-medium">{attachment.filename}</p>
+                        <p className={getMessageDetailAttachmentMetaClassName()}>{getMessageAttachmentMeta(attachment)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <Tabs value={selectedDetailTab} onValueChange={handleMessageDetailTabChange} className={getMessageDetailTabsClassName()}>
+              <TabsList className={getMessageDetailTabsListClassName()}>
+                {(["text", "html", "source"] as MessageDetailTab[]).map((tab) => (
+                  <TabsTrigger key={tab} value={tab}>
+                    {getMessageDetailTabLabel(tab)}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+
+              <TabsContent value="text" className={getMessageDetailTabClassName()}>
+                {hasDetailTabContent(messageDetail, "text") ? (
+                  <pre className={getMessageDetailPreClassName()}>{getDetailTabContent(messageDetail, "text")}</pre>
+                ) : (
+                  <div className={getMessageDetailEmptyClassName()}>{getMessageTabEmptyState("text")}</div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="html" className={getMessageDetailTabClassName()}>
+                {getMessageDetailHasHtml(messageDetail) ? (
+                  <div className={getMessageDetailIframeWrapperClassName()}>
+                    <iframe
+                      title={getMessageDetailHtmlTitle()}
+                      srcDoc={getMessageIframeDoc(messageDetail)}
+                      sandbox={iframeSandbox}
+                      className={getMessageDetailIframeClassName()}
+                    />
+                  </div>
+                ) : (
+                  <div className={getMessageDetailEmptyClassName()}>{getMessageTabEmptyState("html")}</div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="source" className={getMessageDetailTabClassName()}>
+                <pre className={getMessageDetailPreClassName()}>{getMessageSourceValue(messageDetail)}</pre>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const tempEmailWorkspace = (
+    <div className="grid min-h-[calc(100vh-8rem)] overflow-hidden rounded-xl border bg-card lg:grid-cols-[22rem_minmax(22rem,0.9fr)_minmax(30rem,1.25fr)]">
+      <section className="flex min-h-0 flex-col border-b lg:border-b-0 lg:border-r">
+        <div className="border-b p-5">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold tracking-tight">创建临时邮箱</h2>
+            <p className="text-sm text-muted-foreground">快速生成临时邮箱地址</p>
+          </div>
+
+          <div className="mt-5 space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="temp-email-prefix" className="text-sm font-medium">
+                邮箱前缀
+              </label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="temp-email-prefix"
+                  aria-label="邮箱前缀"
+                  placeholder="例如 project-test"
+                  value={mailboxInput}
+                  onChange={(e) => setMailboxInput(e.target.value)}
+                  className="h-10 min-w-0"
+                />
+                <span className="text-sm text-muted-foreground">@</span>
+                <Select value={selectedDomain} onValueChange={setSelectedDomain} disabled={emailDomains.length < 1}>
+                  <SelectTrigger id="temp-email-domain" aria-label="邮箱域名" className="h-10 w-32 shrink-0">
+                    <SelectValue placeholder="域名" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {emailDomains.map((domain) => (
+                      <SelectItem key={domain.host} value={domain.host}>
+                        {domain.host}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Button onClick={handleCreateMailbox} disabled={!canCreateMailbox} className="h-10 w-full">
+              <MailPlus className="h-4 w-4" />
+              {creatingMailbox ? "创建中..." : "创建邮箱"}
+            </Button>
+
+            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <button type="button" onClick={handleGenerateRandomPrefix} className="inline-flex items-center gap-1 hover:text-foreground">
+                <RefreshCw className="h-3.5 w-3.5" />
+                随机前缀
+              </button>
+              <span className="truncate">前缀 ≥ {selectedMinLocalPartLength}</span>
+            </div>
+
+            {mailboxPreview && <p className="break-all rounded-lg border bg-muted/20 px-3 py-2 font-mono text-xs">{mailboxPreview}</p>}
+            {mailboxLocalPartTooShort && (
+              <p className="text-xs text-destructive">当前域名要求邮箱前缀至少 {selectedMinLocalPartLength} 个字符。</p>
+            )}
+            {loadingDomains ? (
+              <p className="text-xs text-muted-foreground">正在载入可用邮箱域名...</p>
+            ) : domainsError ? (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-destructive">
+                <span>{domainsError}</span>
+                <Button type="button" variant="link" size="sm" onClick={() => fetchDomains()} className="h-auto p-0 text-destructive">
+                  重试
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex items-center justify-between border-b px-5 py-4">
+            <h3 className="text-base font-semibold tracking-tight">邮箱列表</h3>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              onClick={() => void fetchMailboxes()}
+              disabled={loadingMailboxes}
+              aria-label="刷新邮箱列表"
+              title="刷新邮箱列表"
+            >
+              <RefreshCw className={`h-3.5 w-3.5${loadingMailboxes ? " animate-spin" : ""}`} />
+            </Button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-auto p-3">
             {loadingMailboxes ? (
-              <div className="flex h-40 items-center justify-center rounded-xl border border-dashed bg-muted/5 text-sm text-muted-foreground">正在加载...</div>
+              <div className="flex h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 text-sm text-muted-foreground">正在加载...</div>
+            ) : mailboxesError ? (
+              <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-destructive/5 px-4 text-center text-sm text-destructive">
+                <p>{mailboxesError}</p>
+                <Button type="button" variant="outline" size="sm" onClick={() => fetchMailboxes()}>
+                  重试
+                </Button>
+              </div>
             ) : mailboxes.length === 0 ? (
-              <div className="flex h-40 items-center justify-center rounded-xl border border-dashed bg-muted/5 px-4 text-center text-sm text-muted-foreground">还没有邮箱。先在上方生成一个地址。</div>
+              <div className="flex h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 px-4 text-center text-sm text-muted-foreground">
+                还没有邮箱。先生成一个地址。
+              </div>
             ) : (
-              <div className="grid gap-2">
+              <div className="space-y-2">
                 {mailboxes.map((mailbox) => (
                   <div
                     key={mailbox.id}
-                    className={`group rounded-xl border bg-card p-3 transition-all ${
+                    className={`group rounded-lg border p-3 transition-colors ${
                       mailbox.id === selectedMailboxId
-                        ? "border-primary/50 bg-primary/[0.03]"
-                        : "hover:border-primary/20 hover:bg-muted/30"
+                        ? "border-primary/60 bg-primary/[0.04]"
+                        : "bg-background hover:border-primary/25 hover:bg-muted/25"
                     }`}
                   >
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-2">
                       <button
                         type="button"
                         onClick={() => setSelectedMailboxId(mailbox.id)}
@@ -1576,19 +1703,20 @@ export function TempEmailManager() {
                         <p className={`break-all font-mono text-sm ${mailbox.id === selectedMailboxId ? "font-semibold text-primary" : "text-foreground"}`}>
                           {mailbox.emailAddress}
                         </p>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
-                          <span>{formatDate(mailbox.createdAt)}</span>
-                          <span>{mailbox.messageCount} 封</span>
-                          {mailbox.unreadCount > 0 && <span className="font-medium text-primary">{mailbox.unreadCount} 未读</span>}
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span>{mailbox.messageCount} 封邮件</span>
+                          {mailbox.unreadCount > 0 && <Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px]">{mailbox.unreadCount} 未读</Badge>}
                         </div>
                       </button>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon-sm"
-                        className="h-7 w-7 shrink-0 text-destructive opacity-100 transition-opacity hover:bg-destructive/10 sm:opacity-0 sm:group-hover:opacity-100"
+                        className="h-7 w-7 shrink-0 text-destructive opacity-100 hover:bg-destructive/10 sm:opacity-0 sm:group-hover:opacity-100"
                         onClick={() => setPendingDeleteMailbox(mailbox)}
                         disabled={deletingMailboxId === mailbox.id}
+                        aria-label="删除邮箱"
+                        title="删除邮箱"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -1597,169 +1725,134 @@ export function TempEmailManager() {
                 ))}
               </div>
             )}
-          </section>
-
-          <section className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <h3 className="truncate text-lg font-semibold tracking-tight">
-                  {selectedMailbox?.emailAddress || "收件箱"}
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  {selectedMailbox ? "查看、标记和删除收到的邮件。" : "选择一个邮箱后会显示邮件列表。"}
-                </p>
-              </div>
-
-              {selectedMailbox && (
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void fetchMessages(selectedMailbox.id)}
-                    disabled={loadingMessages}
-                    className="h-9"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5${loadingMessages ? " animate-spin" : ""}`} />
-                    刷新
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleCopy(selectedMailbox.emailAddress, "邮箱地址已复制")}
-                    className="h-9"
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                    复制
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            <div className="relative min-h-[28rem] sm:min-h-[32rem]">
-              {!selectedMailbox ? (
-                <div className="flex h-full min-h-[28rem] items-center justify-center rounded-xl border border-dashed bg-muted/5 px-4 text-center text-sm text-muted-foreground sm:min-h-[32rem]">
-                  {hasMailboxList ? "从邮箱队列中选择一个地址。" : "上方创建邮箱后，这里会显示收件箱。"}
-                </div>
-              ) : loadingMessages ? (
-                <div className="flex h-full min-h-[28rem] items-center justify-center rounded-xl border border-dashed bg-muted/5 text-sm text-muted-foreground sm:min-h-[32rem]">
-                  正在同步邮件...
-                </div>
-              ) : messages.length === 0 ? (
-                <div className="flex h-full min-h-[28rem] items-center justify-center rounded-xl border border-dashed bg-muted/5 text-sm text-muted-foreground sm:min-h-[32rem]">
-                  收件箱空空如也。
-                </div>
-              ) : (
-                <div className="overflow-hidden rounded-xl border bg-card">
-                  {isDesktop ? (
-                    <Table>
-                      <TableHeader className="bg-muted/30">
-                        <TableRow className="hover:bg-transparent">
-                          <TableHead className="h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">发件人</TableHead>
-                          <TableHead className="h-10 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">邮件主题</TableHead>
-                          <TableHead className="h-10 text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">状态</TableHead>
-                          <TableHead className="h-10 pr-6 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">操作</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {messages.map((message) => (
-                          <TableRow key={message.id} className="group/row">
-                            <TableCell className="py-4">
-                              <div className="max-w-[180px]">
-                                <p className="truncate text-sm font-semibold">{getMessageSenderPrimary(message)}</p>
-                                <p className="truncate text-[10px] text-muted-foreground/60">{getMessageSenderSecondaryLine(message)}</p>
-                              </div>
-                            </TableCell>
-                            <TableCell className="py-4">
-                              <div className="max-w-md">
-                                <button
-                                  type="button"
-                                  className="block max-w-full truncate text-left text-sm font-medium outline-none transition-colors hover:text-primary"
-                                  onClick={() => handleOpenMessage(message)}
-                                >
-                                  {getMessageTitle(message)}
-                                </button>
-                                <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{getMessagePreviewForList(message)}</p>
-                              </div>
-                            </TableCell>
-                            <TableCell className="py-4 text-center">
-                              <Badge
-                                variant="outline"
-                                className={`h-6 px-2 text-[10px] font-medium ${
-                                  !message.isRead ? "border-primary/20 bg-primary/5 text-primary" : "text-muted-foreground"
-                                }`}
-                              >
-                                {message.isRead ? "已读" : "未读"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="py-4 pr-6 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                {!message.isRead && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleMarkRead(message.id)}
-                                    className="h-8 rounded-lg px-2 text-xs hover:bg-muted"
-                                  >
-                                    已读
-                                  </Button>
-                                )}
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10"
-                                  onClick={() => setPendingDeleteMessage(message)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  ) : (
-                    <div className="divide-y p-1">
-                      {messages.map((message) => (
-                        <div key={message.id} className="space-y-3 p-4 sm:p-5">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold">{getMessageSenderPrimary(message)}</p>
-                              <span className="text-[10px] text-muted-foreground">{formatDate(message.receivedAt)}</span>
-                            </div>
-                            <Badge variant={!message.isRead ? "secondary" : "outline"} className="text-[10px]">
-                              {message.isRead ? "已读" : "未读"}
-                            </Badge>
-                          </div>
-                          <button
-                            onClick={() => handleOpenMessage(message)}
-                            className="text-left text-sm font-medium leading-normal outline-none hover:text-primary"
-                          >
-                            {getMessageTitle(message)}
-                          </button>
-                          <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={() => handleOpenMessage(message)} className="h-8 flex-1 text-[11px] font-bold uppercase">
-                              详情
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setPendingDeleteMessage(message)}
-                              className="h-8 border-destructive/20 text-destructive hover:bg-destructive/5"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
+          </div>
         </div>
-      </div>
+      </section>
 
+      <section className="flex min-h-0 flex-col border-b lg:border-b-0 lg:border-r">
+        <div className="border-b p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-base font-semibold tracking-tight">邮件列表</h3>
+              <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                {selectedMailbox?.emailAddress || "选择一个邮箱"}
+              </p>
+            </div>
+            {selectedMailbox && (
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={() => void fetchMessages(selectedMailbox.id)}
+                  disabled={loadingMessages}
+                  aria-label="刷新邮件"
+                  title="刷新邮件"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5${loadingMessages ? " animate-spin" : ""}`} />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={() => handleCopy(selectedMailbox.emailAddress, "邮箱地址已复制")}
+                  aria-label="复制邮箱地址"
+                  title="复制邮箱地址"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto">
+          {!selectedMailbox ? (
+            <div className="flex h-full min-h-80 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+              {hasMailboxList ? "从邮箱列表中选择一个地址。" : "创建邮箱后，这里会显示收件箱。"}
+            </div>
+          ) : loadingMessages ? (
+            <div className="flex h-full min-h-80 items-center justify-center text-sm text-muted-foreground">正在同步邮件...</div>
+          ) : messagesError ? (
+            <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-destructive">
+              <p>{messagesError}</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => selectedMailbox && fetchMessages(selectedMailbox.id)} disabled={!canRetryMessages}>
+                重试
+              </Button>
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="flex h-full min-h-80 items-center justify-center px-6 text-center text-sm text-muted-foreground">收件箱空空如也。</div>
+          ) : (
+            <div className="divide-y">
+              {messages.map((message) => (
+                <button
+                  key={message.id}
+                  type="button"
+                  onClick={() => handleOpenMessage(message)}
+                  className={`group w-full px-5 py-4 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 ${
+                    isSelectedMessage(message, selectedMessage) ? "bg-primary/[0.05] ring-1 ring-inset ring-primary/40" : ""
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${message.isRead ? "bg-transparent" : "bg-primary"}`} />
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="truncate text-sm font-semibold">{getMessageSenderPrimary(message)}</p>
+                        <span className="shrink-0 text-xs text-muted-foreground">{formatDate(message.receivedAt)}</span>
+                      </div>
+                      <p className={`line-clamp-1 text-sm ${message.isRead ? "text-foreground" : "font-semibold text-foreground"}`}>
+                        {getMessageTitle(message)}
+                      </p>
+                      <p className="line-clamp-1 text-xs text-muted-foreground">{getMessagePreviewForList(message)}</p>
+                      <div className="flex items-center justify-between gap-3 pt-1">
+                        <span className="truncate text-xs text-muted-foreground">{getMessageSenderSecondaryLine(message)}</span>
+                        <div className="flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
+                          {!message.isRead && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleMarkRead(message.id)
+                              }}
+                              className="h-7 px-2 text-xs"
+                            >
+                              已读
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setPendingDeleteMessage(message)
+                            }}
+                            aria-label="删除邮件"
+                            title="删除邮件"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="hidden min-h-0 flex-col lg:flex">
+        {renderDesktopMessageDetailPanel()}
+      </section>
+    </div>
+  )
+
+  return (
+    <>
+      {tempEmailWorkspace}
       <Dialog open={messageDialogOpen} onOpenChange={handleMessageDialogOpenChange}>
         <DialogContent className={getMessageDetailDialogClassName()} aria-label={getMessageDetailAriaTitle()}>
           <DialogHeader>
