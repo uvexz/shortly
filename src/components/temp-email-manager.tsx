@@ -169,6 +169,88 @@ function buildMessageSource(detail: MessageDetailRecord) {
 }
 
 const tempEmailReporter = createClientErrorReporter("temp_email_manager")
+const TEMP_EMAIL_PAGE_SIZE = 10
+
+function getDeleteSuccessState(remainingItems: number, currentPage: number) {
+  if (remainingItems > 0) {
+    return {
+      nextPage: currentPage,
+      shouldRefetch: false,
+    }
+  }
+
+  if (currentPage > 1) {
+    return {
+      nextPage: currentPage - 1,
+      shouldRefetch: true,
+    }
+  }
+
+  return {
+    nextPage: 1,
+    shouldRefetch: true,
+  }
+}
+
+function getPaginationRange(page: number, totalItems: number) {
+  if (totalItems <= 0) {
+    return "0 / 0"
+  }
+
+  const start = (page - 1) * TEMP_EMAIL_PAGE_SIZE + 1
+  const end = Math.min(totalItems, page * TEMP_EMAIL_PAGE_SIZE)
+  return `${start}-${end} / ${totalItems}`
+}
+
+function PaginationFooter({
+  label,
+  page,
+  totalPages,
+  totalItems,
+  loading,
+  onPageChange,
+}: {
+  label: string
+  page: number
+  totalPages: number
+  totalItems: number
+  loading: boolean
+  onPageChange: (page: number) => void
+}) {
+  if (totalItems <= 0) {
+    return null
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 border-t px-4 py-3">
+      <p className="min-w-0 text-xs font-medium text-muted-foreground">
+        {label} {getPaginationRange(page, totalItems)}
+      </p>
+      <div className="flex shrink-0 gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={loading || page <= 1}
+          onClick={() => onPageChange(page - 1)}
+          className="h-8"
+        >
+          上一页
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={loading || page >= totalPages}
+          onClick={() => onPageChange(page + 1)}
+          className="h-8"
+        >
+          下一页
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 const messageDetailTabLabels = {
   text: "TXT",
@@ -897,8 +979,14 @@ export function TempEmailManager() {
   const [domainsError, setDomainsError] = useState<string | null>(null)
   const [loadingMailboxes, setLoadingMailboxes] = useState(true)
   const [mailboxesError, setMailboxesError] = useState<string | null>(null)
+  const [mailboxPage, setMailboxPage] = useState(1)
+  const [mailboxTotalPages, setMailboxTotalPages] = useState(1)
+  const [mailboxTotalItems, setMailboxTotalItems] = useState(0)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [messagesError, setMessagesError] = useState<string | null>(null)
+  const [messagePage, setMessagePage] = useState(1)
+  const [messageTotalPages, setMessageTotalPages] = useState(1)
+  const [messageTotalItems, setMessageTotalItems] = useState(0)
   const [creatingMailbox, setCreatingMailbox] = useState(false)
   const [mutatingMessageId, setMutatingMessageId] = useState<string | null>(null)
   const [deletingMailboxId, setDeletingMailboxId] = useState<string | null>(null)
@@ -912,8 +1000,14 @@ export function TempEmailManager() {
   const [messageDetailReloadNonce, setMessageDetailReloadNonce] = useState(0)
   const latestMessageRequestIdRef = useRef(0)
   const latestDetailRequestIdRef = useRef(0)
+  const selectedMailboxIdRef = useRef<string | null>(null)
   const hasShownMailboxUnavailableToastRef = useRef(false)
   const isDesktop = useMediaQuery("(min-width: 768px)")
+
+  const updateSelectedMailboxId = useCallback((nextMailboxId: string | null) => {
+    selectedMailboxIdRef.current = nextMailboxId
+    setSelectedMailboxId(nextMailboxId)
+  }, [])
 
   const selectedMailbox = useMemo(
     () => mailboxes.find((item) => item.id === selectedMailboxId) ?? null,
@@ -983,7 +1077,7 @@ export function TempEmailManager() {
     }
   }, [])
 
-  const fetchMailboxes = useCallback(async (options?: { silent?: boolean }) => {
+  const fetchMailboxes = useCallback(async (currentPage: number, options?: { silent?: boolean }) => {
     const isSilent = options?.silent === true
     if (!isSilent) {
       setLoadingMailboxes(true)
@@ -991,11 +1085,11 @@ export function TempEmailManager() {
     }
 
     try {
-      const res = await fetch("/api/emails?page=1&limit=100")
+      const res = await fetch(`/api/emails?page=${currentPage}&limit=${TEMP_EMAIL_PAGE_SIZE}`)
       const body = await readOptionalJson<MailboxResponse & { error?: string }>(res)
       if (!res.ok) {
         const message = getResponseErrorMessage(body, "加载邮箱失败")
-        tempEmailReporter.warn("fetch_mailboxes_failed_response", { status: res.status })
+        tempEmailReporter.warn("fetch_mailboxes_failed_response", { page: currentPage, status: res.status })
         if (!isSilent) {
           setMailboxesError(message)
           toast.error(message)
@@ -1007,16 +1101,28 @@ export function TempEmailManager() {
       hasShownMailboxUnavailableToastRef.current = false
       setMailboxesError(null)
       setMailboxes(rows)
-      setSelectedMailboxId((current) => getNextMailboxSelection(rows, current))
+      setMailboxTotalItems(body?.total || 0)
+      setMailboxTotalPages(body?.totalPages || 1)
+      if (body?.page && body.page !== currentPage) {
+        setMailboxPage(body.page)
+      }
+      const currentSelectedMailboxId = selectedMailboxIdRef.current
+      const nextSelectedMailboxId = getNextMailboxSelection(rows, currentSelectedMailboxId)
+      if (nextSelectedMailboxId !== currentSelectedMailboxId) {
+        setMessagePage(1)
+      }
+      updateSelectedMailboxId(nextSelectedMailboxId)
       if (rows.length === 0) {
         latestMessageRequestIdRef.current += 1
         setMessages([])
         setMessagesError(null)
         setLoadingMessages(false)
+        setMessageTotalItems(0)
+        setMessageTotalPages(1)
       }
     } catch (error) {
       const message = getUserFacingErrorMessage(error, "加载邮箱失败")
-      tempEmailReporter.report("fetch_mailboxes_failed_exception", error)
+      tempEmailReporter.report("fetch_mailboxes_failed_exception", error, { page: currentPage })
       if (!isSilent) {
         setMailboxesError(message)
         toast.error(message)
@@ -1026,7 +1132,7 @@ export function TempEmailManager() {
         setLoadingMailboxes(false)
       }
     }
-  }, [])
+  }, [updateSelectedMailboxId])
 
   const handleMailboxUnavailable = useCallback(async (showToast = false) => {
     if (showToast && !hasShownMailboxUnavailableToastRef.current) {
@@ -1041,10 +1147,11 @@ export function TempEmailManager() {
     setMessagesError(null)
     setLoadingMessages(false)
     resetMessageDetail()
-    await fetchMailboxes({ silent: !showToast })
+    await fetchMailboxes(1, { silent: !showToast })
+    setMailboxPage(1)
   }, [fetchMailboxes, resetMessageDetail])
 
-  const fetchMessages = useCallback(async (mailboxId: string, options?: { silent?: boolean }) => {
+  const fetchMessages = useCallback(async (mailboxId: string, currentPage: number, options?: { silent?: boolean }) => {
     const isSilent = options?.silent === true
     const requestId = latestMessageRequestIdRef.current + 1
     latestMessageRequestIdRef.current = requestId
@@ -1054,7 +1161,7 @@ export function TempEmailManager() {
     }
 
     try {
-      const res = await fetch(`/api/emails/${mailboxId}/messages?page=1&limit=100`)
+      const res = await fetch(`/api/emails/${mailboxId}/messages?page=${currentPage}&limit=${TEMP_EMAIL_PAGE_SIZE}`)
       const body = await readOptionalJson<MessageResponse & { error?: string }>(res)
 
       if (!res.ok) {
@@ -1065,7 +1172,7 @@ export function TempEmailManager() {
         }
 
         const message = getResponseErrorMessage(body, "加载邮件失败")
-        tempEmailReporter.warn("fetch_messages_failed_response", { mailboxId, status: res.status })
+        tempEmailReporter.warn("fetch_messages_failed_response", { mailboxId, page: currentPage, status: res.status })
         if (!isSilent) {
           toast.error(message)
         }
@@ -1082,6 +1189,11 @@ export function TempEmailManager() {
 
       const nextMessages = body.data || []
       const nextMessageCount = typeof body.total === "number" ? body.total : nextMessages.length
+      setMessageTotalItems(nextMessageCount)
+      setMessageTotalPages(body.totalPages || 1)
+      if (body.page && body.page !== currentPage) {
+        setMessagePage(body.page)
+      }
       setMessages(nextMessages)
       setMessagesError(null)
       setMailboxes((prev) => {
@@ -1106,7 +1218,7 @@ export function TempEmailManager() {
       })
     } catch (error) {
       const message = getUserFacingErrorMessage(error, "加载邮件失败")
-      tempEmailReporter.report("fetch_messages_failed_exception", error, { mailboxId })
+      tempEmailReporter.report("fetch_messages_failed_exception", error, { mailboxId, page: currentPage })
       if (!isSilent) {
         toast.error(message)
       }
@@ -1123,8 +1235,11 @@ export function TempEmailManager() {
 
   useEffect(() => {
     fetchDomains()
-    fetchMailboxes()
-  }, [fetchDomains, fetchMailboxes])
+  }, [fetchDomains])
+
+  useEffect(() => {
+    fetchMailboxes(mailboxPage)
+  }, [fetchMailboxes, mailboxPage])
 
   const canRetryMessages = !!selectedMailboxId && !loadingMessages
 
@@ -1137,11 +1252,13 @@ export function TempEmailManager() {
       setMessages([])
       setMessagesError(null)
       setLoadingMessages(false)
+      setMessageTotalItems(0)
+      setMessageTotalPages(1)
       return
     }
 
-    fetchMessages(selectedMailboxId)
-  }, [fetchMessages, resetMessageDetail, selectedMailboxId])
+    fetchMessages(selectedMailboxId, messagePage)
+  }, [fetchMessages, messagePage, resetMessageDetail, selectedMailboxId])
 
   const handleRetryMessageDetail = useCallback(() => {
     if (!selectedMessage) {
@@ -1159,7 +1276,7 @@ export function TempEmailManager() {
     try {
       await navigator.clipboard.writeText(text)
       toast.success(successMessage)
-    } catch (_e) {
+    } catch {
       toast.error("复制失败，请手动选择复制")
     }
   }
@@ -1240,11 +1357,22 @@ export function TempEmailManager() {
         return
       }
 
-      void fetchMailboxes({ silent: true }).then(() => fetchMessages(selectedMailboxId, { silent: true }))
+      void fetchMailboxes(mailboxPage, { silent: true }).then(() =>
+        fetchMessages(selectedMailboxId, messagePage, { silent: true })
+      )
     }, 15000)
 
     return () => window.clearInterval(interval)
-  }, [fetchMailboxes, fetchMessages, loadingMailboxes, loadingMessages, messageDialogOpen, selectedMailboxId])
+  }, [
+    fetchMailboxes,
+    fetchMessages,
+    loadingMailboxes,
+    loadingMessages,
+    mailboxPage,
+    messageDialogOpen,
+    messagePage,
+    selectedMailboxId,
+  ])
 
   function handleGenerateRandomPrefix() {
     setMailboxInput(generateRandomEmailPrefix())
@@ -1284,7 +1412,11 @@ export function TempEmailManager() {
 
       toast.success("临时邮箱已创建")
       setMailboxInput("")
-      await fetchMailboxes()
+      if (mailboxPage !== 1) {
+        setMailboxPage(1)
+      } else {
+        await fetchMailboxes(1)
+      }
     } catch (error) {
       tempEmailReporter.report("create_mailbox_failed_exception", error, {
         domain: selectedDomain,
@@ -1307,7 +1439,7 @@ export function TempEmailManager() {
       }
 
       setMessages((prev) => prev.map((item) => (item.id === messageId ? { ...item, isRead: true } : item)))
-      await fetchMailboxes()
+      await fetchMailboxes(mailboxPage, { silent: true })
       toast.success("邮件已标记为已读")
     } catch (error) {
       tempEmailReporter.report("mark_message_read_failed_exception", error, { messageId })
@@ -1315,7 +1447,7 @@ export function TempEmailManager() {
     } finally {
       setMutatingMessageId(null)
     }
-  }, [fetchMailboxes])
+  }, [fetchMailboxes, mailboxPage])
 
   useEffect(() => {
     const currentSelectedMessageId = selectedMessage?.id
@@ -1387,10 +1519,18 @@ export function TempEmailManager() {
         latestDetailRequestIdRef.current += 1
         resetMessageDetail()
       }
+      const deleteState = getDeleteSuccessState(messages.length - 1, messagePage)
+      const nextMessageTotal = Math.max(0, messageTotalItems - 1)
       setMessages((prev) => prev.filter((item) => item.id !== messageId))
-      await fetchMailboxes()
+      setMessageTotalItems(nextMessageTotal)
+      setMessageTotalPages(Math.max(1, Math.ceil(nextMessageTotal / TEMP_EMAIL_PAGE_SIZE)))
+      await fetchMailboxes(mailboxPage, { silent: true })
       if (selectedMailboxId) {
-        await fetchMessages(selectedMailboxId, { silent: true })
+        if (deleteState.nextPage !== messagePage) {
+          setMessagePage(deleteState.nextPage)
+        } else if (deleteState.shouldRefetch) {
+          await fetchMessages(selectedMailboxId, deleteState.nextPage, { silent: true })
+        }
       }
       setPendingDeleteMessage(null)
       toast.success("邮件已删除")
@@ -1414,7 +1554,35 @@ export function TempEmailManager() {
       }
 
       setPendingDeleteMailbox(null)
-      await fetchMailboxes()
+      const deleteState = getDeleteSuccessState(mailboxes.length - 1, mailboxPage)
+      const nextMailboxTotal = Math.max(0, mailboxTotalItems - 1)
+      setMailboxTotalItems(nextMailboxTotal)
+      setMailboxTotalPages(Math.max(1, Math.ceil(nextMailboxTotal / TEMP_EMAIL_PAGE_SIZE)))
+      if (selectedMailboxId === mailbox.id) {
+        latestMessageRequestIdRef.current += 1
+        latestDetailRequestIdRef.current += 1
+        updateSelectedMailboxId(null)
+        setMessages([])
+        setMessagesError(null)
+        setLoadingMessages(false)
+        setMessagePage(1)
+        setMessageTotalItems(0)
+        setMessageTotalPages(1)
+        resetMessageDetail()
+      }
+
+      if (deleteState.nextPage !== mailboxPage) {
+        setMailboxPage(deleteState.nextPage)
+      } else {
+        const nextMailboxes = mailboxes.filter((item) => item.id !== mailbox.id)
+        setMailboxes(nextMailboxes)
+        if (selectedMailboxId === mailbox.id) {
+          updateSelectedMailboxId(nextMailboxes[0]?.id ?? null)
+        }
+        if (deleteState.shouldRefetch) {
+          await fetchMailboxes(deleteState.nextPage, { silent: true })
+        }
+      }
       toast.success("邮箱已删除")
     } catch (error) {
       tempEmailReporter.report("delete_mailbox_failed_exception", error, { mailboxId: mailbox.id })
@@ -1660,7 +1828,7 @@ export function TempEmailManager() {
               type="button"
               variant="outline"
               size="icon-sm"
-              onClick={() => void fetchMailboxes()}
+              onClick={() => void fetchMailboxes(mailboxPage)}
               disabled={loadingMailboxes}
               aria-label="刷新邮箱列表"
               title="刷新邮箱列表"
@@ -1675,7 +1843,7 @@ export function TempEmailManager() {
             ) : mailboxesError ? (
               <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-destructive/5 px-4 text-center text-sm text-destructive">
                 <p>{mailboxesError}</p>
-                <Button type="button" variant="outline" size="sm" onClick={() => fetchMailboxes()}>
+                <Button type="button" variant="outline" size="sm" onClick={() => fetchMailboxes(mailboxPage)}>
                   重试
                 </Button>
               </div>
@@ -1697,7 +1865,12 @@ export function TempEmailManager() {
                     <div className="flex items-start gap-2">
                       <button
                         type="button"
-                        onClick={() => setSelectedMailboxId(mailbox.id)}
+                        onClick={() => {
+                          if (mailbox.id !== selectedMailboxId) {
+                            setMessagePage(1)
+                          }
+                          updateSelectedMailboxId(mailbox.id)
+                        }}
                         className="min-w-0 flex-1 text-left outline-none"
                       >
                         <p className={`break-all font-mono text-sm ${mailbox.id === selectedMailboxId ? "font-semibold text-primary" : "text-foreground"}`}>
@@ -1726,6 +1899,16 @@ export function TempEmailManager() {
               </div>
             )}
           </div>
+          {!loadingMailboxes && !mailboxesError && (
+            <PaginationFooter
+              label="邮箱"
+              page={mailboxPage}
+              totalPages={mailboxTotalPages}
+              totalItems={mailboxTotalItems}
+              loading={loadingMailboxes}
+              onPageChange={setMailboxPage}
+            />
+          )}
         </div>
       </section>
 
@@ -1743,7 +1926,7 @@ export function TempEmailManager() {
                 <Button
                   variant="outline"
                   size="icon-sm"
-                  onClick={() => void fetchMessages(selectedMailbox.id)}
+                  onClick={() => void fetchMessages(selectedMailbox.id, messagePage)}
                   disabled={loadingMessages}
                   aria-label="刷新邮件"
                   title="刷新邮件"
@@ -1774,7 +1957,13 @@ export function TempEmailManager() {
           ) : messagesError ? (
             <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-destructive">
               <p>{messagesError}</p>
-              <Button type="button" variant="outline" size="sm" onClick={() => selectedMailbox && fetchMessages(selectedMailbox.id)} disabled={!canRetryMessages}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => selectedMailbox && fetchMessages(selectedMailbox.id, messagePage)}
+                disabled={!canRetryMessages}
+              >
                 重试
               </Button>
             </div>
@@ -1842,6 +2031,16 @@ export function TempEmailManager() {
             </div>
           )}
         </div>
+        {selectedMailbox && !loadingMessages && !messagesError && (
+          <PaginationFooter
+            label="邮件"
+            page={messagePage}
+            totalPages={messageTotalPages}
+            totalItems={messageTotalItems}
+            loading={loadingMessages}
+            onPageChange={setMessagePage}
+          />
+        )}
       </section>
 
       <section className="hidden min-h-0 flex-col lg:flex">
