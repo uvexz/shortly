@@ -20,6 +20,9 @@ export async function GET() {
       role: user.role,
       emailVerified: user.emailVerified,
       image: user.image,
+      banned: user.banned,
+      banReason: user.banReason,
+      banExpires: user.banExpires,
       createdAt: user.createdAt,
       linkCount: sql<number>`count(${shortLink.id})`,
     })

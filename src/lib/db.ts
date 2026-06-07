@@ -26,6 +26,9 @@ async function _initDb() {
       email_verified INTEGER NOT NULL DEFAULT 0,
       image TEXT,
       role TEXT NOT NULL DEFAULT 'user',
+      banned INTEGER NOT NULL DEFAULT 0,
+      ban_reason TEXT,
+      ban_expires INTEGER,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
       updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
@@ -254,6 +257,7 @@ async function _initDb() {
 
   await Promise.all([
     ensureLegacyShortLinkColumns(),
+    ensureLegacyUserColumns(),
     ensureLegacySiteSettingColumns(),
     ensureLegacySiteDomainColumns(),
   ])
@@ -288,6 +292,14 @@ async function ensureLegacyShortLinkColumns() {
     ensureColumn("short_link", "max_clicks", "max_clicks INTEGER"),
     ensureColumn("short_link", "creator_ip", "creator_ip TEXT"),
     ensureColumn("short_link", "domain", "domain TEXT NOT NULL DEFAULT ''"),
+  ])
+}
+
+async function ensureLegacyUserColumns() {
+  await Promise.all([
+    ensureColumn("user", "banned", "banned INTEGER NOT NULL DEFAULT 0"),
+    ensureColumn("user", "ban_reason", "ban_reason TEXT"),
+    ensureColumn("user", "ban_expires", "ban_expires INTEGER"),
   ])
 }
 

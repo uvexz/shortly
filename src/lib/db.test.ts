@@ -127,7 +127,7 @@ describe("db bootstrap regression checks", () => {
   it("limits runtime schema repair to named legacy compatibility helpers", async () => {
     const dbSource = await readSource(dbPath)
 
-    expect(dbSource).toContain("await Promise.all([\n    ensureLegacyShortLinkColumns(),\n    ensureLegacySiteSettingColumns(),\n    ensureLegacySiteDomainColumns(),\n  ])")
+    expect(dbSource).toContain("await Promise.all([\n    ensureLegacyShortLinkColumns(),\n    ensureLegacyUserColumns(),\n    ensureLegacySiteSettingColumns(),\n    ensureLegacySiteDomainColumns(),\n  ])")
     expect(dbSource).toContain("await ensureLegacyShortLinkDomainSlugMigration()")
     expect(dbSource).not.toContain('ensureColumn("session"')
     expect(dbSource).not.toContain('ensureColumn("account"')
@@ -147,9 +147,13 @@ describe("db bootstrap regression checks", () => {
     const dbSource = await readSource(dbPath)
 
     expect(dbSource).toContain("async function ensureLegacyShortLinkColumns()")
+    expect(dbSource).toContain("async function ensureLegacyUserColumns()")
     expect(dbSource).toContain("async function ensureLegacySiteSettingColumns()")
     expect(dbSource).toContain("async function ensureLegacySiteDomainColumns()")
     expect(dbSource).toContain('ensureColumn("short_link", "expires_at", "expires_at INTEGER")')
+    expect(dbSource).toContain('ensureColumn("user", "banned", "banned INTEGER NOT NULL DEFAULT 0")')
+    expect(dbSource).toContain('ensureColumn("user", "ban_reason", "ban_reason TEXT")')
+    expect(dbSource).toContain('ensureColumn("user", "ban_expires", "ban_expires INTEGER")')
     expect(dbSource).toContain('ensureColumn("site_setting", "telegram_bot_username", "telegram_bot_username TEXT NOT NULL DEFAULT \'\'")')
     expect(dbSource).toContain('ensureColumn("site_setting", "user_max_links_per_hour", "user_max_links_per_hour INTEGER NOT NULL DEFAULT 50")')
     expect(dbSource).toContain('ensureColumn("site_domain", "short_link_min_slug_length", "short_link_min_slug_length INTEGER NOT NULL DEFAULT 1")')
@@ -180,6 +184,7 @@ describe("db bootstrap regression checks", () => {
     const dbSource = await readSource(dbPath)
 
     expect(dbSource).toContain("async function ensureLegacySiteDomainColumns()")
+    expect(dbSource).toContain("async function ensureLegacyUserColumns()")
     expect(dbSource).not.toContain('ensureColumn("api_key"')
   })
 

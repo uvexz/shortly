@@ -6,6 +6,7 @@ import { Resend } from "resend"
 import { db } from "./db"
 import * as schema from "./schema"
 import { eq } from "drizzle-orm"
+import { APIError } from "better-auth/api"
 
 const resendApiKey = process.env.RESEND_API_KEY
 const resendFrom = process.env.RESEND_FROM_EMAIL || "noreply@example.com"
@@ -76,6 +77,21 @@ export const auth = betterAuth({
         defaultValue: "user",
         input: false,
       },
+      banned: {
+        type: "boolean",
+        defaultValue: false,
+        input: false,
+      },
+      banReason: {
+        type: "string",
+        required: false,
+        input: false,
+      },
+      banExpires: {
+        type: "date",
+        required: false,
+        input: false,
+      },
     },
   },
   databaseHooks: {
@@ -90,6 +106,38 @@ export const auth = betterAuth({
             .update(schema.user)
             .set({ role: "admin" })
             .where(eq(schema.user.id, user.id))
+        },
+      },
+    },
+    session: {
+      create: {
+        before: async (session) => {
+          const user = await db
+            .select({
+              id: schema.user.id,
+              banned: schema.user.banned,
+              banExpires: schema.user.banExpires,
+            })
+            .from(schema.user)
+            .where(eq(schema.user.id, session.userId))
+            .get()
+
+          if (!user?.banned) {
+            return
+          }
+
+          if (user.banExpires && user.banExpires.getTime() <= Date.now()) {
+            await db
+              .update(schema.user)
+              .set({ banned: false, banReason: null, banExpires: null, updatedAt: new Date() })
+              .where(eq(schema.user.id, user.id))
+            return
+          }
+
+          throw APIError.from("FORBIDDEN", {
+            message: "账号已被封禁。如有疑问，请联系管理员。",
+            code: "BANNED_USER",
+          })
         },
       },
     },
