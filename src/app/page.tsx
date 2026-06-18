@@ -3,12 +3,73 @@ import { initDb } from "@/lib/db"
 import { getAvatarUrl } from "@/lib/gravatar"
 import { resolveCanonicalAppUrl } from "@/lib/http"
 import { getSiteSettings } from "@/lib/site-settings"
-import { UserMenu } from "@/components/user-menu"
+import { ShortLinkCreator } from "@/components/short-link-creator"
 import { Button } from "@/components/ui/button"
+import { UserMenu } from "@/components/user-menu"
 import { headers } from "next/headers"
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import { ArrowRight, ChevronRight, Link2, Mail, Sparkles, Zap, ShieldCheck, Globe, BarChart3 } from "lucide-react"
+import type { ComponentType, CSSProperties, ReactNode } from "react"
+import {
+  ArrowRight,
+  BarChart3,
+  CheckCircle2,
+  Clock3,
+  Code2,
+  Copy,
+  Inbox,
+  KeyRound,
+  Link2,
+  Mail,
+  ShieldCheck,
+  TimerReset,
+} from "lucide-react"
+
+const orzBackgroundMarks = [
+  { text: "orz", className: "left-[6%] top-[18%] text-3xl sm:text-5xl", duration: "18s" },
+  { text: "OTZ", className: "right-[9%] top-[24%] text-4xl sm:text-6xl", duration: "22s" },
+  { text: "＿|￣|○", className: "left-[10%] top-[66%] text-2xl sm:text-4xl", duration: "20s" },
+  { text: "_(:3」∠)_", className: "right-[7%] top-[72%] hidden text-2xl sm:block lg:text-4xl", duration: "24s" },
+]
+
+const shortLinkHighlights = [
+  "自定义后缀",
+  "点击统计",
+  "有效期与点击上限",
+  "API 与 ShareX 配置",
+]
+
+const tempMailHighlights = [
+  "快速生成地址",
+  "在线查看收件箱",
+  "删除邮箱及邮件",
+  "Addy.io 兼容接口",
+]
+
+const heroOrzVariants = [
+  { text: "Orz", className: "font-black tracking-normal" },
+  { text: "orz", className: "font-black tracking-normal" },
+  { text: "ORZ", className: "font-black tracking-normal" },
+  { text: "OTZ", className: "font-black tracking-normal" },
+  { text: "OTL", className: "font-black tracking-normal" },
+  { text: "orz...", className: "font-black tracking-tight" },
+  { text: "o rz", className: "font-black tracking-normal" },
+  { text: "O|￣|_", className: "text-[clamp(3.3rem,11vw,8rem)] font-semibold tracking-tight" },
+  { text: "＿|￣|○", className: "text-[clamp(3.3rem,11vw,8rem)] font-semibold tracking-tight" },
+  { text: "○|￣|＿", className: "text-[clamp(3.3rem,11vw,8rem)] font-semibold tracking-tight" },
+  { text: "_|￣|○", className: "text-[clamp(3.3rem,11vw,8rem)] font-semibold tracking-tight" },
+  { text: "○几", className: "font-semibold tracking-tight" },
+  { text: "囧rz", className: "font-black tracking-normal" },
+  { text: "冏rz", className: "font-black tracking-normal" },
+  { text: "崩orz", className: "font-black tracking-tight" },
+  { text: "orz?", className: "font-black tracking-normal" },
+  { text: "orz!", className: "font-black tracking-normal" },
+  { text: "_(:3」∠)_", className: "text-[clamp(2.45rem,8vw,5.75rem)] font-semibold tracking-tight" },
+  { text: "(¦3[▓▓]", className: "text-[clamp(2.65rem,8.5vw,6rem)] font-semibold tracking-tight" },
+  { text: "(:з」∠)_", className: "text-[clamp(2.65rem,8.5vw,6rem)] font-semibold tracking-tight" },
+]
+
+const heroOrzCycleStep = 1.25
 
 export default async function HomePage({
   searchParams,
@@ -43,7 +104,8 @@ export default async function HomePage({
     getSiteSettings(),
     auth.api.getSession({ headers: headersList }),
   ])
-  const siteName = settings?.siteName?.trim() || "Shortly"
+  const siteName = settings?.siteName?.trim() || "Orz"
+  const sampleShortHost = getSampleShortHost(settings?.siteUrl, siteName)
   const user = session?.user
     ? {
         name: session.user.name,
@@ -53,217 +115,347 @@ export default async function HomePage({
       }
     : null
 
+  const dashboardHref = user ? "/dashboard" : "/login"
+  const tempEmailHref = user ? "/dashboard?tab=temp-email" : "/login"
+  const apiHref = user ? "/dashboard?tab=api" : "/login"
+
   return (
-    <main className="relative min-h-screen bg-background selection:bg-primary selection:text-primary-foreground">
-      <div className="relative mx-auto flex min-h-screen w-full max-w-[88rem] flex-col px-[var(--page-gutter)] py-5 sm:py-6 lg:py-8">
-        {/* Navigation */}
+    <main className="relative min-h-screen overflow-hidden bg-[#fbfcfb] text-foreground selection:bg-primary selection:text-primary-foreground">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px),linear-gradient(180deg,rgba(15,23,42,0.03)_1px,transparent_1px)] bg-[size:4.5rem_4.5rem]" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-foreground/15 to-transparent" />
+        {orzBackgroundMarks.map((mark) => (
+          <span
+            key={mark.text}
+            className={`orz-bg-mark absolute font-mono font-black text-foreground/[0.055] ${mark.className}`}
+            style={{ animationDuration: mark.duration }}
+          >
+            {mark.text}
+          </span>
+        ))}
+      </div>
+
+      <div className="relative mx-auto flex min-h-screen w-full max-w-[86rem] flex-col px-[var(--page-gutter)] py-5 sm:py-6 lg:py-7">
         <header className="flex items-center justify-between gap-4">
-          <Link href="/" className="group flex items-center gap-2 text-xl font-bold tracking-tighter">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-transform group-hover:scale-105">
-              <Zap className="h-5 w-5 fill-current" />
-            </div>
-            <span className="hidden sm:inline-block text-2xl tracking-[-0.05em]">{siteName}</span>
+          <Link href="/" className="group flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-foreground/10 bg-white font-mono text-lg font-black tracking-tighter shadow-sm transition-transform group-hover:-translate-y-0.5">
+              Orz
+            </span>
+            <span className="hidden min-w-0 text-lg font-semibold tracking-tight sm:block">短链接及临时邮箱</span>
           </Link>
 
-          <nav className="flex items-center gap-2 sm:gap-6">
+          <nav className="flex items-center gap-2 sm:gap-5">
+            <div className="hidden items-center gap-5 md:flex">
+              <Link href={dashboardHref} className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                短链接
+              </Link>
+              <Link href={tempEmailHref} className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                临时邮箱
+              </Link>
+              <Link href={apiHref} className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                API
+              </Link>
+              <Link href="https://github.com/uvexz/shortly" target="_blank" className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+                GitHub
+              </Link>
+            </div>
+            <div className="hidden h-5 w-px bg-border sm:block" />
             {user ? (
-              <>
-                <div className="hidden items-center gap-6 md:flex">
-                  <Link href="/dashboard?tab=links" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">短链接</Link>
-                  <Link href="/dashboard?tab=temp-email" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors">临时邮箱</Link>
-                </div>
-                <div className="h-5 w-px bg-border mx-2 hidden sm:block" />
-                <UserMenu user={user} />
-              </>
+              <UserMenu user={user} />
             ) : (
-              <>
-                <Button variant="ghost" size="sm" asChild className="hidden font-bold sm:flex">
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" asChild className="hidden font-semibold sm:inline-flex">
                   <Link href="/login">登录</Link>
                 </Button>
-                <Button size="sm" asChild className="h-10 px-5 font-bold shadow-sm transition-transform hover:-translate-y-0.5 active:scale-95 sm:px-6">
-                  <Link href="/register">免费开始</Link>
+                <Button size="sm" asChild className="h-9 rounded-md px-4 font-semibold shadow-sm">
+                  <Link href="/register">开始使用</Link>
                 </Button>
-              </>
+              </div>
             )}
           </nav>
         </header>
 
-        {/* Hero Section */}
-        <section className="relative mt-14 flex flex-col items-center text-center sm:mt-20 lg:mt-24">
-          <div className="inline-flex animate-in fade-in slide-in-from-top-4 duration-1000 items-center gap-2 rounded-lg border border-primary/10 bg-primary/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-primary sm:text-xs">
-            <Sparkles className="h-4 w-4 fill-primary/20" />
-            <span>智能链入 · 隐私直达</span>
-          </div>
+        <section className="grid flex-1 items-center gap-10 pb-12 pt-14 sm:pt-20 lg:grid-cols-[minmax(0,1fr)_minmax(25rem,0.86fr)] lg:gap-12 lg:pb-16 lg:pt-20">
+          <div className="mx-auto max-w-3xl text-center lg:mx-0 lg:text-left">
+            <div className="flex justify-center lg:justify-start">
+              <div className="orz-hero-text relative h-[clamp(5rem,19vw,12rem)] w-full max-w-[44rem] overflow-visible font-mono text-[clamp(4.2rem,15vw,10.5rem)] leading-none text-foreground sm:text-[clamp(5rem,19vw,12rem)]">
+                {heroOrzVariants.map((variant, index) => (
+                  <span
+                    key={variant.text}
+                    className={`orz-hero-variant absolute inset-0 flex items-center justify-center lg:justify-start ${variant.className}`}
+                    style={{
+                      "--orz-cycle-delay": `${index * heroOrzCycleStep}s`,
+                      "--orz-cycle-duration": `${heroOrzVariants.length * heroOrzCycleStep}s`,
+                      zIndex: heroOrzVariants.length - index,
+                    } as CSSProperties}
+                    data-text={variant.text}
+                    aria-hidden={index === 0 ? undefined : "true"}
+                  >
+                    {variant.text}
+                  </span>
+                ))}
+              </div>
+            </div>
 
-          <h1 className="mt-8 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200 max-w-5xl text-balance text-[clamp(2.75rem,9vw,6rem)] font-[900] leading-[0.92] tracking-[-0.055em] sm:mt-10 lg:leading-[0.88]">
-            Redefine <br />
-            <span className="text-primary">Efficiency.</span>
-          </h1>
+            <p className="mx-auto mt-5 max-w-2xl text-pretty text-base leading-7 text-muted-foreground sm:text-lg lg:mx-0 lg:text-xl">
+              把长链接轻轻放下，顺手拿一个临时邮箱。适合分享、验证、测试和任何“不想留下太多痕迹”的小任务。
+            </p>
 
-          <p className="mt-6 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-300 max-w-[42rem] text-pretty text-base font-medium leading-relaxed text-muted-foreground sm:mt-8 sm:text-xl lg:text-2xl">
-            提供简单、快速、极致隐私的链接压缩与临时邮箱工具。
-            一处入口，全能管理。
-          </p>
-
-          <div className="mt-8 flex w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-500 flex-col gap-3 sm:mt-10 sm:max-w-none sm:flex-row sm:items-center sm:justify-center">
-            {user ? (
-              <Button size="lg" asChild className="h-12 px-7 text-base font-black shadow-lg shadow-primary/10 transition-transform hover:-translate-y-1 active:scale-95 sm:h-14 sm:px-9 sm:text-lg">
-                <Link href="/dashboard">
-                  进入系统控制台
-                  <ArrowRight className="ml-2 h-6 w-6" />
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center lg:justify-start">
+              <Button size="lg" asChild className="h-11 rounded-md px-5 font-semibold sm:h-12">
+                <Link href={dashboardHref}>
+                  <Link2 className="h-4 w-4" />
+                  管理短链接
                 </Link>
               </Button>
-            ) : (
-              <>
-                <Button size="lg" asChild className="h-12 px-7 text-base font-black shadow-lg shadow-primary/10 transition-transform hover:-translate-y-1 active:scale-95 sm:h-14 sm:px-9 sm:text-lg">
-                  <Link href="/register">
-                    立即免费加入
-                    <ArrowRight className="ml-2 h-6 w-6" />
-                  </Link>
-                </Button>
-                <Button variant="outline" size="lg" asChild className="h-12 border px-7 text-base font-black transition-transform hover:-translate-y-1 active:scale-95 sm:h-14 sm:px-9 sm:text-lg">
-                  <Link href="/login">了解产品特性</Link>
-                </Button>
-              </>
-            )}
+              <Button variant="outline" size="lg" asChild className="h-11 rounded-md border-foreground/15 bg-white/70 px-5 font-semibold sm:h-12">
+                <Link href={tempEmailHref}>
+                  <Mail className="h-4 w-4" />
+                  获取临时邮箱
+                </Link>
+              </Button>
+            </div>
+
+            <div className="mt-8 hidden gap-3 text-left sm:grid sm:grid-cols-3">
+              <MiniSignal icon={TimerReset} title="自动过期" description="适合一次性分享和临时验证。" />
+              <MiniSignal icon={ShieldCheck} title="隐私优先" description="少留痕迹，操作更可控。" />
+              <MiniSignal icon={BarChart3} title="清晰统计" description="点击、日志和状态一眼可查。" />
+            </div>
+          </div>
+
+          <div className="mx-auto w-full max-w-xl lg:mx-0">
+            <div className="relative rounded-md border border-foreground/10 bg-white/85 p-4 shadow-[0_24px_80px_rgba(15,23,42,0.09)] backdrop-blur sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-4 border-b pb-3">
+                <div>
+                  <p className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">quick shortener</p>
+                  <h2 className="mt-1 text-lg font-semibold tracking-tight">先粘贴一条长链接</h2>
+                </div>
+                <span className="rounded-md bg-emerald-50 px-2.5 py-1 font-mono text-xs font-bold text-emerald-700 ring-1 ring-emerald-100">
+                  orz.to/abc
+                </span>
+              </div>
+              <ShortLinkCreator user={user} mode="homepage" siteName={siteName} />
+            </div>
           </div>
         </section>
 
-        {/* Trust Section */}
-        <section className="mt-14 animate-in fade-in zoom-in-95 duration-1000 delay-700 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm text-muted-foreground transition-colors hover:text-foreground sm:mt-16 sm:gap-x-10">
-          <div className="flex items-center gap-2 font-bold"><ShieldCheck className="h-5 w-5" /> 隐私保护</div>
-          <div className="flex items-center gap-2 font-bold"><Globe className="h-5 w-5" /> 全球分发</div>
-          <div className="flex items-center gap-2 font-bold"><BarChart3 className="h-5 w-5" /> 精准数据分析</div>
-          <div className="flex items-center gap-2 font-bold"><Zap className="h-5 w-5" /> 毫秒级响应</div>
-        </section>
+        <section className="grid gap-5 pb-12 lg:grid-cols-2 lg:pb-16">
+          <FeaturePanel
+            title="短链接"
+            eyebrow="SHORT LINKS"
+            description="从创建、复制、统计到自动失效，短链保持轻巧，但该有的控制都在。"
+            icon={Link2}
+            href={dashboardHref}
+            action="创建短链接"
+            highlights={shortLinkHighlights}
+            visual={
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 rounded-md border bg-background px-3 py-2 font-mono text-sm">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  {sampleShortHost}/orz
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <StatTile label="点击" value="1,248" />
+                  <StatTile label="有效期" value="7 天" />
+                  <StatTile label="状态" value="在线" />
+                </div>
+              </div>
+            }
+          />
 
-        {/* Features Section - Asymmetric Bento-style Layout */}
-        <section className="mt-16 grid gap-5 sm:mt-24 sm:gap-6 lg:mt-28 lg:grid-cols-12">
-          {/* Main Feature: Short Link */}
-          <article className="group relative col-span-12 flex flex-col overflow-hidden rounded-xl border bg-card/70 p-5 transition-shadow hover:shadow-sm sm:p-8 lg:p-10">
-            <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between lg:gap-12">
-              <div className="max-w-xl">
-                <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm sm:h-14 sm:w-14">
-                  <Link2 className="h-8 w-8" />
-                </div>
-                <h2 className="text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">智能短链接</h2>
-                <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg lg:text-xl">
-                  不仅仅是缩短链接。支持自定义后缀、可视化数据分析、点击限制及过期自动作废，让您的每一条分享都尽在掌控。
-                </p>
-                <div className="mt-6 flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-primary/10 px-3 py-1.5 text-xs font-black text-primary uppercase tracking-tighter">自定义后缀</span>
-                  <span className="rounded-md bg-primary/10 px-3 py-1.5 text-xs font-black text-primary uppercase tracking-tighter">数据统计</span>
-                  <span className="rounded-md bg-primary/10 px-3 py-1.5 text-xs font-black text-primary uppercase tracking-tighter">自动过期</span>
-                </div>
-              </div>
-              <div className="w-full flex-shrink-0 lg:max-w-sm">
-                <div className="relative aspect-square w-full overflow-hidden rounded-lg border bg-background/50 p-5 shadow-inner sm:p-6">
-                   <div className="space-y-4">
-                      <div className="h-2 w-1/2 rounded bg-muted animate-pulse" />
-                      <div className="h-8 w-full rounded-lg bg-primary/5 border border-dashed border-primary/20 flex items-center px-4 font-mono text-xs text-primary">Shortly.link/XyZ7_</div>
-                      <div className="h-2 w-full rounded bg-muted" />
-                      <div className="h-2 w-3/4 rounded bg-muted" />
-                      <div className="pt-4 flex justify-between">
-                         <div className="h-8 w-8 rounded-full bg-primary/10" />
-                         <div className="h-8 w-8 rounded-full bg-primary/10" />
-                         <div className="h-8 w-24 rounded-full bg-primary shadow-sm" />
-                      </div>
-                   </div>
-                </div>
-              </div>
-            </div>
-            <div className="mt-8 flex items-center gap-2 text-sm font-black text-primary opacity-100 sm:opacity-0 sm:-translate-x-4 sm:transition-all sm:group-hover:translate-x-0 sm:group-hover:opacity-100">
-              <span className="uppercase tracking-widest">立即创建您的短链接</span>
-              <ChevronRight className="h-5 w-5" />
-            </div>
-          </article>
-
-          {/* Sub Feature: Temp Mail */}
-          <article className="group relative col-span-12 flex flex-col overflow-hidden rounded-xl border bg-card/70 p-5 transition-shadow hover:shadow-sm sm:p-8 lg:p-10">
-            <div className="flex flex-col gap-8 lg:flex-row-reverse lg:items-center lg:justify-between lg:gap-12">
-              <div className="max-w-xl">
-                 <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm sm:h-14 sm:w-14">
-                  <Mail className="h-8 w-8" />
-                </div>
-                <h2 className="text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">隐私临时邮箱</h2>
-                <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg lg:text-xl">
-                  彻底告别垃圾邮件。快速生成随机邮箱地址，实时在线收信，用于注册测试或临时验证，完美保护您的主邮箱隐私。
-                </p>
-                <div className="mt-6 flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-accent/20 px-3 py-1.5 text-xs font-black text-accent-foreground uppercase tracking-tighter">一键生成</span>
-                  <span className="rounded-md bg-accent/20 px-3 py-1.5 text-xs font-black text-accent-foreground uppercase tracking-tighter">实时查收</span>
-                  <span className="rounded-md bg-accent/20 px-3 py-1.5 text-xs font-black text-accent-foreground uppercase tracking-tighter">过期自毁</span>
-                </div>
-              </div>
-              <div className="w-full flex-shrink-0 lg:max-w-md">
-                 <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-background/50 p-5 shadow-inner sm:p-6">
-                    <div className="space-y-4">
-                       <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-accent/20" />
-                          <div className="h-3 w-32 rounded bg-muted" />
-                       </div>
-                       <div className="h-4 w-full rounded bg-muted/60" />
-                       <div className="h-4 w-5/6 rounded bg-muted/30" />
-                       <div className="h-20 w-full rounded-xl border-t border-muted/50 mt-4 bg-muted/5 flex items-center justify-center">
-                          <Zap className="h-8 w-8 text-accent/20 animate-pulse" />
-                       </div>
+          <FeaturePanel
+            title="临时邮箱"
+            eyebrow="TEMP MAIL"
+            description="给注册验证、测试环境和一次性沟通一个干净收件箱，用完就收起来。"
+            icon={Inbox}
+            href={tempEmailHref}
+            action="打开临时邮箱"
+            highlights={tempMailHighlights}
+            visual={
+              <div className="space-y-3">
+                <div className="rounded-md border bg-background p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-mono text-sm font-semibold">hello-orz@temp.mail</p>
+                      <p className="text-xs text-muted-foreground">新验证码刚刚抵达</p>
                     </div>
-                 </div>
+                    <Copy className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <MailRow title="登录验证码" time="刚刚" />
+                  <MailRow title="欢迎使用测试环境" time="2 分钟前" />
+                </div>
               </div>
-            </div>
-            <div className="mt-8 flex items-center justify-start gap-2 text-sm font-black text-accent-foreground opacity-100 sm:justify-end sm:translate-x-4 sm:opacity-0 sm:transition-all sm:group-hover:translate-x-0 sm:group-hover:opacity-100">
-              <span className="uppercase tracking-widest text-primary">立即获取临时邮箱</span>
-              <ChevronRight className="h-5 w-5 text-primary" />
-            </div>
-          </article>
+            }
+          />
         </section>
 
-        {/* Footer */}
-        <footer className="mt-16 border-t py-10 sm:mt-24 sm:py-12 lg:mt-28">
-          <div className="flex flex-col gap-10 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-6">
-              <div className="flex items-center gap-3 text-2xl font-black tracking-tighter uppercase">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <Zap className="h-6 w-6 fill-current" />
-                </div>
-                <span>{siteName}</span>
-              </div>
-              <p className="text-sm font-medium text-muted-foreground/60 max-w-sm leading-relaxed">
-                致力于打造最极致的效率工具体验。开源、透明、隐私优先。由热爱技术的开发者为开发者而设计。
-              </p>
+        <section className="border-y border-foreground/10 py-10">
+          <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+            <div>
+              <p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">for power users</p>
+              <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Orz 可以很轻，也可以很能打。</h2>
             </div>
-            
-            <div className="grid grid-cols-2 gap-x-10 gap-y-10 sm:gap-x-16">
-               <div className="space-y-4">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-foreground">项目</h4>
-                  <nav className="flex flex-col gap-3 text-sm font-bold text-muted-foreground">
-                    <Link href="https://github.com/uvexz/shortly" target="_blank" className="hover:text-primary transition-colors">GitHub 源码</Link>
-                    <Link href="#" className="hover:text-primary transition-colors">更新日志</Link>
-                    <Link href="#" className="hover:text-primary transition-colors">反馈建议</Link>
-                  </nav>
-               </div>
-               <div className="space-y-4">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-foreground">法律</h4>
-                  <nav className="flex flex-col gap-3 text-sm font-bold text-muted-foreground">
-                    <Link href="#" className="hover:text-primary transition-colors">隐私政策</Link>
-                    <Link href="#" className="hover:text-primary transition-colors">服务条款</Link>
-                    <Link href="#" className="hover:text-primary transition-colors">Cookie 说明</Link>
-                  </nav>
-               </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Capability icon={Code2} title="开放 API" description="用 API key 接入短链和临时邮箱流程。" href={apiHref} />
+              <Capability icon={KeyRound} title="Passkey 登录" description="减少密码负担，账户进入更直接。" href={user ? "/dashboard?tab=security" : "/login"} />
+              <Capability icon={Clock3} title="生命周期控制" description="按有效期、点击上限和删除动作管理链接。" href={dashboardHref} />
+              <Capability icon={CheckCircle2} title="清晰后台" description="链接、邮箱、日志和密钥集中管理。" href={dashboardHref} />
             </div>
           </div>
-          <div className="mt-12 flex flex-col gap-6 border-t border-border/60 pt-8 sm:flex-row sm:items-center sm:justify-between">
-             <div className="text-[xs] font-bold text-muted-foreground opacity-40">
-                © {new Date().getFullYear()} {siteName}. All rights reserved globally.
-             </div>
-             <div className="flex gap-6 grayscale transition-all hover:grayscale-0">
-                <div className="h-6 w-6 rounded bg-muted/20" />
-                <div className="h-6 w-6 rounded bg-muted/20" />
-                <div className="h-6 w-6 rounded bg-muted/20" />
-             </div>
+        </section>
+
+        <footer className="flex flex-col gap-5 py-9 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-2xl font-black text-foreground">Orz</span>
+            <span>短链接及临时邮箱</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <Link href="https://github.com/uvexz/shortly" target="_blank" className="transition-colors hover:text-foreground">
+              GitHub
+            </Link>
+            <Link href={apiHref} className="transition-colors hover:text-foreground">
+              API
+            </Link>
+            <span>© 2026 {siteName}</span>
           </div>
         </footer>
       </div>
     </main>
   )
+}
+
+function MiniSignal({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: ComponentType<{ className?: string }>
+  title: string
+  description: string
+}) {
+  return (
+    <div className="rounded-md border border-foreground/10 bg-white/60 p-3 shadow-sm backdrop-blur">
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <Icon className="h-4 w-4 text-emerald-700" />
+        {title}
+      </div>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+    </div>
+  )
+}
+
+function FeaturePanel({
+  title,
+  eyebrow,
+  description,
+  icon: Icon,
+  href,
+  action,
+  highlights,
+  visual,
+}: {
+  title: string
+  eyebrow: string
+  description: string
+  icon: ComponentType<{ className?: string }>
+  href: string
+  action: string
+  highlights: string[]
+  visual: ReactNode
+}) {
+  return (
+    <article className="group overflow-hidden rounded-md border border-foreground/10 bg-white/78 p-5 shadow-sm backdrop-blur transition-shadow hover:shadow-md sm:p-6">
+      <div className="flex items-start justify-between gap-5">
+        <div className="min-w-0">
+          <p className="font-mono text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{eyebrow}</p>
+          <h2 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">{title}</h2>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground sm:text-base">{description}</p>
+        </div>
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border bg-background text-foreground">
+          <Icon className="h-5 w-5" />
+        </span>
+      </div>
+
+      <div className="mt-6 rounded-md border bg-muted/20 p-3">{visual}</div>
+
+      <div className="mt-6 grid gap-2 sm:grid-cols-2">
+        {highlights.map((item) => (
+          <div key={item} className="flex items-center gap-2 text-sm text-muted-foreground">
+            <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+            <span>{item}</span>
+          </div>
+        ))}
+      </div>
+
+      <Button variant="ghost" asChild className="mt-6 h-9 px-0 font-semibold hover:bg-transparent">
+        <Link href={href}>
+          {action}
+          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+        </Link>
+      </Button>
+    </article>
+  )
+}
+
+function StatTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border bg-background p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold">{value}</p>
+    </div>
+  )
+}
+
+function MailRow({ title, time }: { title: string; time: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
+      <span className="min-w-0 truncate text-sm font-medium">{title}</span>
+      <span className="shrink-0 text-xs text-muted-foreground">{time}</span>
+    </div>
+  )
+}
+
+function Capability({
+  icon: Icon,
+  title,
+  description,
+  href,
+}: {
+  icon: ComponentType<{ className?: string }>
+  title: string
+  description: string
+  href: string
+}) {
+  return (
+    <Link href={href} className="rounded-md border border-foreground/10 bg-white/70 p-4 shadow-sm transition-colors hover:bg-white">
+      <div className="flex items-center gap-3">
+        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-foreground text-background">
+          <Icon className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="font-semibold tracking-tight">{title}</h3>
+          <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+function getSampleShortHost(siteUrl: string | undefined, siteName: string) {
+  if (siteUrl) {
+    try {
+      return new URL(siteUrl).host
+    } catch {
+      // Fall through to a neutral sample below.
+    }
+  }
+
+  const asciiName = siteName
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "")
+    .slice(0, 18)
+
+  return asciiName ? `${asciiName}.link` : "orz.local"
 }

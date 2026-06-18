@@ -452,7 +452,7 @@ export function ShortLinkCreator({
 
   const content = (
     <div className={isHomepageMode ? "mx-auto w-full max-w-3xl space-y-4" : "flex w-full max-w-none flex-col gap-4"}>
-      {isHomepageMode && (
+      {isHomepageMode && !siteName && (
         <div className="space-y-2 text-center">
           <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/70">{siteName || "Shortly"}</p>
           <h1 className="text-balance text-[clamp(2rem,5vw,3.5rem)] font-medium tracking-[-0.04em]">快速创建短链</h1>

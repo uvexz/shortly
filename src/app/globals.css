@@ -135,3 +135,137 @@
     overflow-x: hidden;
   }
 }
+
+@keyframes orz-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-0.45rem);
+  }
+}
+
+@keyframes orz-drift {
+  from {
+    transform: translateY(1.25rem);
+  }
+  to {
+    transform: translateY(-2.5rem);
+  }
+}
+
+.orz-hero-text {
+  animation: orz-stage-breathe 5.5s ease-in-out infinite;
+  text-wrap: nowrap;
+}
+
+.orz-hero-variant {
+  animation: orz-meme-cycle var(--orz-cycle-duration, 25s) ease-in-out infinite;
+  animation-delay: var(--orz-cycle-delay, 0s);
+  opacity: 0;
+  transform: translateY(0.28em) scale(0.96) rotate(-1deg);
+  transform-origin: 42% 85%;
+  white-space: nowrap;
+}
+
+.orz-hero-variant:first-child {
+  opacity: 1;
+}
+
+.orz-hero-variant::before,
+.orz-hero-variant::after {
+  animation: orz-ghost var(--orz-cycle-duration, 25s) ease-in-out infinite;
+  animation-delay: var(--orz-cycle-delay, 0s);
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.orz-hero-variant::before {
+  transform: translate(0.045em, 0.035em);
+}
+
+.orz-hero-variant::after {
+  transform: translate(-0.035em, -0.025em);
+}
+
+.orz-bg-mark {
+  animation: orz-drift linear infinite alternate;
+  user-select: none;
+}
+
+@keyframes orz-stage-breathe {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  45% {
+    transform: translateY(-0.18rem);
+  }
+  56% {
+    transform: translateY(0.08rem);
+  }
+}
+
+@keyframes orz-meme-cycle {
+  0% {
+    opacity: 0;
+    transform: translateY(-0.18em) scale(1.03) rotate(1deg);
+  }
+  0.8% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+  2.1% {
+    opacity: 1;
+    transform: translateY(0.08em) scaleY(0.94) scaleX(1.035) rotate(-0.5deg);
+  }
+  3.6% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+  4.9% {
+    opacity: 0;
+    transform: translateY(0.22em) scale(0.98) rotate(-1deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0.22em) scale(0.98) rotate(-1deg);
+  }
+}
+
+@keyframes orz-ghost {
+  0%,
+  1.8% {
+    opacity: 0;
+  }
+  2.2% {
+    opacity: 0.14;
+  }
+  4.8%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orz-hero-text,
+  .orz-hero-variant,
+  .orz-hero-variant::before,
+  .orz-hero-variant::after,
+  .orz-bg-mark {
+    animation: none;
+  }
+
+  .orz-hero-variant {
+    opacity: 0;
+    transform: none;
+  }
+
+  .orz-hero-variant:first-child {
+    opacity: 1;
+  }
+}
