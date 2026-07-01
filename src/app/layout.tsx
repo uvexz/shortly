@@ -21,12 +21,12 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     title: settings?.siteName || "Shortly",
-    description: "Simple URL shortener",
+    description: "安静、可控的短链接与临时邮箱工具。",
   }
 }
 
 export const viewport: Viewport = {
-  themeColor: "#ffffff",
+  themeColor: "#efebe3",
 }
 
 export default function RootLayout({

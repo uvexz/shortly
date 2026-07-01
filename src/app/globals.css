@@ -60,6 +60,7 @@
   --space-3xl: 4rem;
   --page-gutter: clamp(1rem, 3vw, 2rem);
   --section-gap: clamp(3rem, 8vw, 6rem);
+  --font-wabi-display: "Newsreader", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -147,136 +148,61 @@
   }
 }
 
-@keyframes orz-float {
-  0%,
-  100% {
-    transform: translateY(0);
+@layer utilities {
+  .font-wabi-display {
+    font-family: var(--font-wabi-display);
+    font-weight: 400;
+    letter-spacing: 0;
   }
-  50% {
-    transform: translateY(-0.45rem);
+
+  .wabi-paper {
+    background-color: #efebe3;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgb(29 27 24 / 0.09) 1px, transparent 0),
+      linear-gradient(90deg, rgb(29 27 24 / 0.045) 1px, transparent 1px),
+      linear-gradient(180deg, rgb(29 27 24 / 0.035) 1px, transparent 1px);
+    background-position:
+      0 0,
+      center top,
+      center top;
+    background-size:
+      19px 19px,
+      5.75rem 5.75rem,
+      5.75rem 5.75rem;
+  }
+
+  .wabi-proof {
+    background-image:
+      linear-gradient(135deg, rgb(29 27 24 / 0.06) 0 1px, transparent 1px 14px),
+      radial-gradient(circle at 22% 18%, rgb(29 27 24 / 0.08), transparent 18rem);
+  }
+
+  .wabi-reveal {
+    animation: wabi-reveal 720ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+
+  .wabi-reveal[data-delay="1"] {
+    animation-delay: 90ms;
+  }
+
+  .wabi-reveal[data-delay="2"] {
+    animation-delay: 180ms;
   }
 }
 
-@keyframes orz-drift {
+@keyframes wabi-reveal {
   from {
-    transform: translateY(1.25rem);
+    opacity: 0;
+    transform: translateY(0.65rem);
   }
   to {
-    transform: translateY(-2.5rem);
-  }
-}
-
-.orz-hero-text {
-  animation: orz-stage-breathe 5.5s ease-in-out infinite;
-  text-wrap: nowrap;
-}
-
-.orz-hero-variant {
-  animation: orz-meme-cycle var(--orz-cycle-duration, 25s) ease-in-out infinite;
-  animation-delay: var(--orz-cycle-delay, 0s);
-  opacity: 0;
-  transform: translateY(0.28em) scale(0.96) rotate(-1deg);
-  transform-origin: 42% 85%;
-  white-space: nowrap;
-}
-
-.orz-hero-variant:first-child {
-  opacity: 1;
-}
-
-.orz-hero-variant::before,
-.orz-hero-variant::after {
-  animation: orz-ghost var(--orz-cycle-duration, 25s) ease-in-out infinite;
-  animation-delay: var(--orz-cycle-delay, 0s);
-  content: attr(data-text);
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.orz-hero-variant::before {
-  transform: translate(0.045em, 0.035em);
-}
-
-.orz-hero-variant::after {
-  transform: translate(-0.035em, -0.025em);
-}
-
-.orz-bg-mark {
-  animation: orz-drift linear infinite alternate;
-  user-select: none;
-}
-
-@keyframes orz-stage-breathe {
-  0%,
-  100% {
+    opacity: 1;
     transform: translateY(0);
-  }
-  45% {
-    transform: translateY(-0.18rem);
-  }
-  56% {
-    transform: translateY(0.08rem);
-  }
-}
-
-@keyframes orz-meme-cycle {
-  0% {
-    opacity: 0;
-    transform: translateY(-0.18em) scale(1.03) rotate(1deg);
-  }
-  0.8% {
-    opacity: 1;
-    transform: translateY(0) scale(1) rotate(0deg);
-  }
-  2.1% {
-    opacity: 1;
-    transform: translateY(0.08em) scaleY(0.94) scaleX(1.035) rotate(-0.5deg);
-  }
-  3.6% {
-    opacity: 1;
-    transform: translateY(0) scale(1) rotate(0deg);
-  }
-  4.9% {
-    opacity: 0;
-    transform: translateY(0.22em) scale(0.98) rotate(-1deg);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(0.22em) scale(0.98) rotate(-1deg);
-  }
-}
-
-@keyframes orz-ghost {
-  0%,
-  1.8% {
-    opacity: 0;
-  }
-  2.2% {
-    opacity: 0.14;
-  }
-  4.8%,
-  100% {
-    opacity: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .orz-hero-text,
-  .orz-hero-variant,
-  .orz-hero-variant::before,
-  .orz-hero-variant::after,
-  .orz-bg-mark {
+  .wabi-reveal {
     animation: none;
-  }
-
-  .orz-hero-variant {
-    opacity: 0;
-    transform: none;
-  }
-
-  .orz-hero-variant:first-child {
-    opacity: 1;
   }
 }
