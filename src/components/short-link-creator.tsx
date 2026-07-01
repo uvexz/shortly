@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SHORT_LINK_EXPIRES_IN_OPTIONS, type ShortLinkExpiresIn } from "@/lib/short-link-expiration"
+import { useMediaQuery } from "@/lib/use-media-query"
 import { toast } from "sonner"
 import { Scissors, Copy, ExternalLink, LogIn, X } from "lucide-react"
 import Link from "next/link"
@@ -119,40 +120,48 @@ export function ShortLinkCreator({
   const [shortDomains, setShortDomains] = useState<ShortDomainOption[]>([])
   const [selectedDomain, setSelectedDomain] = useState("")
   const [isPending, startTransition] = useTransition()
+  const isDesktop = useMediaQuery("(min-width: 768px)")
 
   useEffect(() => {
     if (!user) return
 
     let cancelled = false
-    setDomainsLoading(true)
 
-    void (async () => {
-      try {
-        const res = await fetch("/api/domains")
-        const body = await readOptionalJson<DomainsResponse & { error?: string }>(res)
-        if (!res.ok) {
-          shortLinkCreatorReporter.warn("fetch_domains_failed_response", { status: res.status })
-          if (!cancelled) {
-            toast.error(getResponseErrorMessage(body, "加载短链域名失败"))
-          }
-          return
-        }
-
-        if (cancelled) return
-        const domains = body?.shortDomains || []
-        setShortDomains(domains)
-        setSelectedDomain((current) => current || domains.find((item) => item.isDefault)?.host || domains[0]?.host || "")
-      } catch (error) {
-        shortLinkCreatorReporter.report("fetch_domains_failed_exception", error)
-        if (!cancelled) {
-          toast.error(getUserFacingErrorMessage(error, "加载短链域名失败"))
-        }
-      } finally {
-        if (!cancelled) {
-          setDomainsLoading(false)
-        }
+    queueMicrotask(() => {
+      if (cancelled) {
+        return
       }
-    })()
+
+      setDomainsLoading(true)
+
+      void (async () => {
+        try {
+          const res = await fetch("/api/domains")
+          const body = await readOptionalJson<DomainsResponse & { error?: string }>(res)
+          if (!res.ok) {
+            shortLinkCreatorReporter.warn("fetch_domains_failed_response", { status: res.status })
+            if (!cancelled) {
+              toast.error(getResponseErrorMessage(body, "加载短链域名失败"))
+            }
+            return
+          }
+
+          if (cancelled) return
+          const domains = body?.shortDomains || []
+          setShortDomains(domains)
+          setSelectedDomain((current) => current || domains.find((item) => item.isDefault)?.host || domains[0]?.host || "")
+        } catch (error) {
+          shortLinkCreatorReporter.report("fetch_domains_failed_exception", error)
+          if (!cancelled) {
+            toast.error(getUserFacingErrorMessage(error, "加载短链域名失败"))
+          }
+        } finally {
+          if (!cancelled) {
+            setDomainsLoading(false)
+          }
+        }
+      })()
+    })
 
     return () => {
       cancelled = true
@@ -286,15 +295,17 @@ export function ShortLinkCreator({
               </label>
               <Input
                 id="short-link-url"
+                name="url"
                 type="url"
-                placeholder="https://example.com/very/long/path"
+                placeholder="例如：https://example.com/very/long/path…"
+                autoComplete="url"
                 value={url}
                 onChange={(e) => handleUrlChange(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleShorten()
                 }}
                 className="h-12 text-base"
-                autoFocus
+                autoFocus={isDesktop}
               />
             </div>
 
@@ -306,7 +317,7 @@ export function ShortLinkCreator({
                   </label>
                   <Select value={selectedDomain} onValueChange={setSelectedDomain} disabled={domainsLoading || shortDomains.length < 1}>
                     <SelectTrigger id="short-link-domain" aria-label="短链域名" className="h-10 w-full bg-background">
-                      <SelectValue placeholder={domainsLoading ? "加载中..." : "选择域名"} />
+                      <SelectValue placeholder={domainsLoading ? "加载中…" : "选择域名"} />
                     </SelectTrigger>
                     <SelectContent>
                       {shortDomains.map((domain) => (
@@ -324,7 +335,10 @@ export function ShortLinkCreator({
                   </label>
                   <Input
                     id="short-link-custom-slug"
-                    placeholder="留空自动生成"
+                    name="customSlug"
+                    placeholder="留空自动生成…"
+                    autoComplete="off"
+                    spellCheck={false}
                     value={customSlug}
                     onChange={(e) => setCustomSlug(e.target.value)}
                     className="h-10 bg-background"
@@ -338,8 +352,11 @@ export function ShortLinkCreator({
                   </label>
                   <Input
                     id="short-link-max-clicks"
+                    name="maxClicks"
                     type="number"
-                    placeholder="不限"
+                    placeholder="例如：100…"
+                    autoComplete="off"
+                    inputMode="numeric"
                     value={maxClicks}
                     onChange={(e) => setMaxClicks(e.target.value)}
                     className="h-10 bg-background"
@@ -405,7 +422,7 @@ export function ShortLinkCreator({
 
             <Button onClick={handleShorten} disabled={isPending || !canSubmit} className="h-11 w-full">
               <Scissors className="h-4 w-4" />
-              {isPending ? "创建中..." : submitLabel}
+              {isPending ? "创建中…" : submitLabel}
             </Button>
           </aside>
         </div>
@@ -462,8 +479,11 @@ export function ShortLinkCreator({
       <div className={isHomepageMode ? "border-b" : "space-y-2"}>
         <Input
           id="short-link-url"
+          name="url"
           type="url"
-          placeholder="粘贴需要缩短的长链接"
+          aria-label="目标链接"
+          placeholder="粘贴需要缩短的长链接…"
+          autoComplete="url"
           value={url}
           onChange={(e) => handleUrlChange(e.target.value)}
           onKeyDown={(e) => {
@@ -474,14 +494,14 @@ export function ShortLinkCreator({
               ? "h-14 border-0 bg-transparent px-0 text-xl shadow-none focus-visible:ring-0 sm:h-16 sm:text-2xl"
               : "h-12 text-base"
           }
-          autoFocus={!modeMeta.showContainer}
+          autoFocus={isDesktop && !modeMeta.showContainer}
         />
       </div>
 
       {showStandaloneCreate && (
         <Button onClick={handleShorten} disabled={isPending || !canSubmit} className="h-11 w-full">
           <Scissors className="h-4 w-4" />
-          {isPending ? "生成中..." : submitLabel}
+          {isPending ? "生成中…" : submitLabel}
         </Button>
       )}
 
@@ -519,7 +539,7 @@ export function ShortLinkCreator({
               </label>
               <Select value={selectedDomain} onValueChange={setSelectedDomain} disabled={domainsLoading || shortDomains.length < 1}>
                 <SelectTrigger id="short-link-domain" aria-label="短链域名" className="h-10 w-full bg-background">
-                  <SelectValue placeholder={domainsLoading ? "加载短链域名中..." : "选择短链域名"} />
+                  <SelectValue placeholder={domainsLoading ? "加载短链域名中…" : "选择短链域名"} />
                 </SelectTrigger>
                 <SelectContent>
                   {shortDomains.map((domain) => (
@@ -540,7 +560,10 @@ export function ShortLinkCreator({
               </label>
               <Input
                 id="short-link-custom-slug"
-                placeholder="例如：summer-sale"
+                name="customSlug"
+                placeholder="例如：summer-sale…"
+                autoComplete="off"
+                spellCheck={false}
                 value={customSlug}
                 onChange={(e) => setCustomSlug(e.target.value)}
                 className="h-10 bg-background"
@@ -562,8 +585,11 @@ export function ShortLinkCreator({
               </label>
               <Input
                 id="short-link-max-clicks"
+                name="maxClicks"
                 type="number"
-                placeholder="不填则不限制"
+                placeholder="不填则不限制…"
+                autoComplete="off"
+                inputMode="numeric"
                 value={maxClicks}
                 onChange={(e) => setMaxClicks(e.target.value)}
                 className="h-10 bg-background"
@@ -599,7 +625,7 @@ export function ShortLinkCreator({
             <div className={isHomepageMode ? "flex flex-col gap-2 pt-1 sm:flex-row" : "flex flex-col gap-2 sm:flex-row"}>
               <Button onClick={handleShorten} disabled={isPending || !canSubmit} className="h-10 flex-1">
                 <Scissors className="h-4 w-4" />
-                {isPending ? "创建中..." : submitLabel}
+                {isPending ? "创建中…" : submitLabel}
               </Button>
             </div>
           )}

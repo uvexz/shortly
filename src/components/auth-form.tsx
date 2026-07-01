@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { useMediaQuery } from "@/lib/use-media-query";
 import { toast } from "sonner";
 import { Mail, KeyRound, Loader2, CheckCircle2, ChevronRight } from "lucide-react";
 
@@ -54,6 +55,7 @@ export function AuthForm({
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<Step>("email");
   const [loading, setLoading] = useState(false);
+  const isDesktop = useMediaQuery("(min-width: 768px)");
 
   const supportsPasskey =
     typeof window !== "undefined" &&
@@ -199,7 +201,7 @@ export function AuthForm({
           <Button
             onClick={handleAddPasskey}
             disabled={loading}
-            className="h-12 w-full rounded-xl text-base font-bold shadow-lg shadow-primary/10 transition-all hover:shadow-xl hover:-translate-y-1"
+            className="h-12 w-full rounded-xl text-base font-bold shadow-lg shadow-primary/10 transition-[box-shadow,transform] hover:-translate-y-1 hover:shadow-xl"
           >
             {loading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -237,21 +239,24 @@ export function AuthForm({
                   <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
                   <Input
                     id="auth-email"
+                    name="email"
                     type="email"
-                    placeholder="you@example.com"
+                    placeholder="you@example.com…"
+                    autoComplete="email"
+                    spellCheck={false}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
                     disabled={loading}
-                    autoFocus
-                    className="h-12 pl-10 rounded-xl border-border/60 bg-muted/40 transition-all focus:bg-background focus:ring-4 focus:ring-primary/5"
+                    autoFocus={isDesktop}
+                    className="h-12 rounded-xl border-border/60 bg-muted/40 pl-10 transition-[background-color,border-color,box-shadow] focus-visible:bg-background focus-visible:ring-4 focus-visible:ring-primary/5"
                   />
                 </div>
               </div>
               <Button
                 onClick={handleSendOtp}
                 disabled={loading || !email}
-                className="h-12 w-full rounded-xl text-base font-bold shadow-lg shadow-primary/10 transition-all hover:shadow-xl hover:-translate-y-1"
+                className="h-12 w-full rounded-xl text-base font-bold shadow-lg shadow-primary/10 transition-[box-shadow,transform] hover:-translate-y-1 hover:shadow-xl"
               >
                 {loading ? (
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -273,22 +278,25 @@ export function AuthForm({
                 </div>
                 <Input
                   id="auth-otp"
+                  name="one-time-code"
                   type="text"
                   inputMode="numeric"
-                  placeholder="······"
+                  placeholder="123456…"
+                  autoComplete="one-time-code"
+                  spellCheck={false}
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
                   disabled={loading}
                   maxLength={6}
-                  autoFocus
-                  className="h-16 rounded-xl border-border/60 bg-background text-center text-3xl font-black tracking-[0.5em] transition-all focus:ring-4 focus:ring-primary/5"
+                  autoFocus={isDesktop}
+                  className="h-16 rounded-xl border-border/60 bg-background text-center text-3xl font-black tracking-[0.5em] transition-[border-color,box-shadow] focus-visible:ring-4 focus-visible:ring-primary/5"
                 />
               </div>
               <Button
                 onClick={handleVerifyOtp}
                 disabled={loading || otp.length < 6}
-                className="h-12 w-full rounded-xl text-base font-bold shadow-lg shadow-primary/10 transition-all hover:shadow-xl hover:-translate-y-1"
+                className="h-12 w-full rounded-xl text-base font-bold shadow-lg shadow-primary/10 transition-[box-shadow,transform] hover:-translate-y-1 hover:shadow-xl"
               >
                 {loading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
                 完成验证并登录
@@ -326,7 +334,7 @@ export function AuthForm({
               variant="outline"
               onClick={handleGithub}
               disabled={loading}
-              className="h-12 rounded-xl font-bold bg-background transition-all hover:bg-accent hover:-translate-y-1 flex items-center justify-center gap-2"
+              className="flex h-12 items-center justify-center gap-2 rounded-xl bg-background font-bold transition-[background-color,transform] hover:-translate-y-1 hover:bg-accent"
             >
               <GithubIcon className="h-5 w-5" />
               <span>GitHub</span>
@@ -338,7 +346,7 @@ export function AuthForm({
               variant="outline"
               onClick={handleSignInPasskey}
               disabled={loading}
-              className="h-12 rounded-xl font-bold bg-background transition-all hover:bg-accent hover:-translate-y-1 flex items-center justify-center gap-2"
+              className="flex h-12 items-center justify-center gap-2 rounded-xl bg-background font-bold transition-[background-color,transform] hover:-translate-y-1 hover:bg-accent"
             >
               <KeyRound className="h-5 w-5" />
               <span>Passkey</span>

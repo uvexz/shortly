@@ -5,10 +5,24 @@ import { authClient } from "@/lib/auth-client"
 import { createClientErrorReporter, getUserFacingErrorMessage } from "@/lib/client-feedback"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { KeyRound, Plus, Trash2, Loader2, MonitorSmartphone, Copy } from "lucide-react"
 
 const passkeyReporter = createClientErrorReporter("passkey")
+const passkeyNameDateFormatter = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+})
 
 function getPasskeyErrorMessage(error: unknown) {
   const message = getUserFacingErrorMessage(error, "")
@@ -59,6 +73,11 @@ export function PasskeyManager() {
   const { data: passkeys, isPending, refetch } = authClient.useListPasskeys()
   const [loadingAdd, setLoadingAdd] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [pendingDeletePasskey, setPendingDeletePasskey] = useState<{
+    id: string
+    name?: string
+    credentialID: string
+  } | null>(null)
 
   const supportsPasskey =
     typeof window !== "undefined" && typeof window.PublicKeyCredential !== "undefined"
@@ -67,7 +86,7 @@ export function PasskeyManager() {
     setLoadingAdd(true)
     try {
       const res = await authClient.passkey.addPasskey({
-        name: `${navigator.platform} - ${new Date().toLocaleDateString()}`,
+        name: `${navigator.platform} - ${passkeyNameDateFormatter.format(new Date())}`,
       })
       if (res?.error) {
         passkeyReporter.warn("add_failed_response", { error: res.error })
@@ -93,6 +112,7 @@ export function PasskeyManager() {
         toast.error("删除通行密钥失败，请稍后重试。")
       } else {
         toast.success("通行密钥已删除")
+        setPendingDeletePasskey(null)
         refetch()
       }
     } catch (error) {
@@ -145,7 +165,7 @@ export function PasskeyManager() {
         ) : isPending ? (
           <div className="flex h-32 items-center justify-center rounded-xl border border-dashed bg-muted/5 text-sm text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
-            正在载入密钥列表...
+            正在载入密钥列表…
           </div>
         ) : !passkeys?.length ? (
           <div className="flex h-32 items-center justify-center rounded-xl border border-dashed bg-muted/5 p-6 text-center text-sm text-muted-foreground">
@@ -154,7 +174,7 @@ export function PasskeyManager() {
         ) : (
           <div className="grid gap-3">
             {passkeys.map((pk: { id: string; name?: string; backedUp: boolean; credentialID: string; createdAt: Date }) => (
-              <div key={pk.id} className="group relative rounded-xl border bg-card p-4 transition-all hover:border-primary/20 sm:p-5">
+              <div key={pk.id} className="group relative rounded-xl border bg-card p-4 transition-colors hover:border-primary/20 sm:p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1 space-y-3">
                     <div className="flex items-start gap-3">
@@ -171,7 +191,7 @@ export function PasskeyManager() {
                           )}
                         </div>
                         <p className="mt-0.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                          ADDED ON {pk.createdAt ? new Date(pk.createdAt).toLocaleDateString() : "UNKNOWN"}
+                          ADDED ON {pk.createdAt ? formatDate(pk.createdAt) : "UNKNOWN"}
                         </p>
                       </div>
                     </div>
@@ -186,6 +206,8 @@ export function PasskeyManager() {
                         size="icon-sm"
                         className="h-7 w-7 opacity-50 hover:opacity-100"
                         onClick={() => void handleCopyCredentialId(pk.credentialID)}
+                        aria-label="复制通行密钥 ID"
+                        title="复制通行密钥 ID"
                       >
                         <Copy className="h-3 w-3" />
                       </Button>
@@ -195,9 +217,11 @@ export function PasskeyManager() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleDeletePasskey(pk.id)}
+                    onClick={() => setPendingDeletePasskey(pk)}
                     disabled={deleteId === pk.id}
                     className="h-8 w-8 text-destructive opacity-100 transition-opacity hover:bg-destructive/10 sm:opacity-0 sm:group-hover:opacity-100"
+                    aria-label={`删除通行密钥 ${pk.name || pk.credentialID}`}
+                    title="删除通行密钥"
                   >
                     {deleteId === pk.id ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -211,6 +235,34 @@ export function PasskeyManager() {
           </div>
         )}
       </div>
+
+      <Dialog open={!!pendingDeletePasskey} onOpenChange={(open) => !open && setPendingDeletePasskey(null)}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
+          <DialogHeader>
+            <DialogTitle>确认删除这枚通行密钥？</DialogTitle>
+            <DialogDescription>
+              删除后，这台设备将无法再使用该通行密钥登录。
+              {pendingDeletePasskey && (
+                <span className="mt-2 block break-all font-mono text-xs text-muted-foreground">
+                  {pendingDeletePasskey.name || pendingDeletePasskey.credentialID}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDeletePasskey(null)} disabled={!!deleteId}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => pendingDeletePasskey && handleDeletePasskey(pendingDeletePasskey.id)}
+              disabled={!!deleteId}
+            >
+              {deleteId ? "删除中…" : "删除通行密钥"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

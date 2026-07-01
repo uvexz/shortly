@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { ChevronsUpDown, LayoutDashboard, Shield, LogOut } from "lucide-react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
@@ -50,6 +51,7 @@ export function UserMenu({ user, layout = "icon", align = "end", className }: Us
         {layout === "panel" ? (
           <Button
             variant="ghost"
+            aria-label="打开用户菜单"
             className={cn(
               "h-auto w-full justify-start gap-2 rounded-md px-2 py-2 text-left",
               "group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0",
@@ -67,7 +69,7 @@ export function UserMenu({ user, layout = "icon", align = "end", className }: Us
             <ChevronsUpDown className="h-4 w-4 text-muted-foreground group-data-[collapsible=icon]:hidden" />
           </Button>
         ) : (
-          <Button variant="ghost" className={cn("relative h-9 w-9 rounded-full p-0", className)}>
+          <Button variant="ghost" aria-label="打开用户菜单" className={cn("relative h-9 w-9 rounded-full p-0", className)}>
             <Avatar className="h-9 w-9">
               <AvatarImage src={user.image ?? undefined} alt={user.name} />
               <AvatarFallback>{initials}</AvatarFallback>
@@ -83,14 +85,18 @@ export function UserMenu({ user, layout = "icon", align = "end", className }: Us
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push("/dashboard")}>
-          <LayoutDashboard className="mr-2 h-4 w-4" />
-          用户面板
+        <DropdownMenuItem asChild>
+          <Link href="/dashboard">
+            <LayoutDashboard className="mr-2 h-4 w-4" />
+            用户面板
+          </Link>
         </DropdownMenuItem>
         {user.role === "admin" && (
-          <DropdownMenuItem onClick={() => router.push("/admin")}>
-            <Shield className="mr-2 h-4 w-4" />
-            管理面板
+          <DropdownMenuItem asChild>
+            <Link href="/admin">
+              <Shield className="mr-2 h-4 w-4" />
+              管理面板
+            </Link>
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />

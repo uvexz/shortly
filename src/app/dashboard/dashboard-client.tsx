@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { UserMenu } from "@/components/user-menu"
 import { ShortLinkCreator } from "@/components/short-link-creator"
 import { TempEmailManager } from "@/components/temp-email-manager"
@@ -93,6 +94,15 @@ interface DashboardClientProps {
 const dashboardTabs = new Set(["links", "temp-email", "api", "security"])
 const dashboardReporter = createClientErrorReporter("dashboard_client")
 
+function getDashboardTab(value: string | null | undefined) {
+  return value && dashboardTabs.has(value) ? value : "links"
+}
+
+function getPositivePage(value: string | null | undefined) {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
 function getDeleteSuccessState(remainingItems: number, currentPage: number) {
   if (remainingItems > 0) {
     return {
@@ -115,6 +125,10 @@ function getDeleteSuccessState(remainingItems: number, currentPage: number) {
 }
 
 export function DashboardClient({ user, initialTab }: DashboardClientProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentSearch = searchParams.toString()
   const [links, setLinks] = useState<ShortLink[]>([])
   const [loading, setLoading] = useState(true)
   const [linksError, setLinksError] = useState<string | null>(null)
@@ -123,21 +137,49 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
   const [logs, setLogs] = useState<ClickLog[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
   const [logsError, setLogsError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState(
-    initialTab && dashboardTabs.has(initialTab) ? initialTab : "links"
-  )
-  const [page, setPage] = useState(1)
+  const [activeTab, setActiveTab] = useState(getDashboardTab(searchParams.get("tab") ?? initialTab))
+  const [page, setPage] = useState(() => getPositivePage(searchParams.get("page")) ?? 1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
   const [pendingDeleteLink, setPendingDeleteLink] = useState<ShortLink | null>(null)
   const [deletingLinkId, setDeletingLinkId] = useState<string | null>(null)
   const isDesktop = useMediaQuery("(min-width: 768px)")
 
-  useEffect(() => {
-    if (initialTab && dashboardTabs.has(initialTab)) {
-      setActiveTab(initialTab)
-    }
-  }, [initialTab])
+  const replaceUrlState = useCallback(
+    (next: { tab?: string; page?: number }) => {
+      const params = new URLSearchParams(currentSearch)
+      const nextTab = next.tab ? getDashboardTab(next.tab) : activeTab
+      const nextPage = next.page ?? page
+
+      if (nextTab === "links") {
+        params.delete("tab")
+      } else {
+        params.set("tab", nextTab)
+      }
+
+      if (nextTab === "links" && nextPage > 1) {
+        params.set("page", String(nextPage))
+      } else {
+        params.delete("page")
+      }
+
+      const query = params.toString()
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+    },
+    [activeTab, currentSearch, page, pathname, router]
+  )
+
+  function handleTabChange(nextTab: string) {
+    const normalizedTab = getDashboardTab(nextTab)
+    setActiveTab(normalizedTab)
+    replaceUrlState({ tab: normalizedTab })
+  }
+
+  function handlePageChange(nextPage: number) {
+    const normalizedPage = Math.max(1, nextPage)
+    setPage(normalizedPage)
+    replaceUrlState({ page: normalizedPage })
+  }
 
   const fetchLinks = useCallback(async (currentPage: number, options?: { silent?: boolean }) => {
     if (!options?.silent) {
@@ -179,7 +221,17 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
   }, [])
 
   useEffect(() => {
-    fetchLinks(page)
+    let cancelled = false
+
+    queueMicrotask(() => {
+      if (!cancelled) {
+        void fetchLinks(page)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [fetchLinks, page])
 
   async function handleDelete(id: string) {
@@ -202,7 +254,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
         }
 
         if (deleteState.nextPage !== page) {
-          setPage(deleteState.nextPage)
+          handlePageChange(deleteState.nextPage)
           return
         }
 
@@ -274,7 +326,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
   }
 
   async function handleCreated() {
-    setPage(1)
+    handlePageChange(1)
     await fetchLinks(1)
   }
 
@@ -335,7 +387,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
           <div className="min-h-0 flex-1 overflow-auto">
             {loading ? (
               <div className="flex h-full min-h-80 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                正在加载记录...
+                正在加载记录…
               </div>
             ) : linksError ? (
               <div className="flex h-full min-h-80 flex-col items-center justify-center gap-4 px-6 text-center">
@@ -435,7 +487,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                   variant="outline"
                   size="sm"
                   disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
+                  onClick={() => handlePageChange(page - 1)}
                   className="h-8"
                 >
                   上一页
@@ -444,7 +496,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                   variant="outline"
                   size="sm"
                   disabled={page >= totalPages}
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => handlePageChange(page + 1)}
                   className="h-8"
                 >
                   下一页
@@ -605,7 +657,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                   <h4 className="text-sm font-semibold">最近访问日志</h4>
                   {logsLoading ? (
                     <div className="flex h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 text-sm text-muted-foreground">
-                      正在拉取日志...
+                      正在拉取日志…
                     </div>
                   ) : logsError ? (
                     <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-destructive/5 px-4 text-center text-sm text-destructive">
@@ -676,7 +728,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                     <SidebarMenuButton
                       type="button"
                       isActive={activeTab === "links"}
-                      onClick={() => setActiveTab("links")}
+                      onClick={() => handleTabChange("links")}
                       tooltip="短链"
                     >
                       <Link2 className="h-4 w-4" />
@@ -687,7 +739,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                     <SidebarMenuButton
                       type="button"
                       isActive={activeTab === "temp-email"}
-                      onClick={() => setActiveTab("temp-email")}
+                      onClick={() => handleTabChange("temp-email")}
                       tooltip="临时邮箱"
                     >
                       <Mail className="h-4 w-4" />
@@ -698,7 +750,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                     <SidebarMenuButton
                       type="button"
                       isActive={activeTab === "api"}
-                      onClick={() => setActiveTab("api")}
+                      onClick={() => handleTabChange("api")}
                       tooltip="API 管理"
                     >
                       <KeyRound className="h-4 w-4" />
@@ -709,7 +761,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                     <SidebarMenuButton
                       type="button"
                       isActive={activeTab === "security"}
-                      onClick={() => setActiveTab("security")}
+                      onClick={() => handleTabChange("security")}
                       tooltip="安全"
                     >
                       <Shield className="h-4 w-4" />
@@ -805,7 +857,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
             {logsLoading ? (
               <div className="flex h-64 flex-col items-center justify-center space-y-4 text-center">
                 <div className="h-8 w-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-                <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">正在拉取日志...</p>
+                <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">正在拉取日志…</p>
               </div>
             ) : logsError ? (
               <div className="flex h-64 flex-col items-center justify-center space-y-4 text-center">
@@ -928,7 +980,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
               disabled={!!deletingLinkId}
               className="h-11 rounded-lg text-[11px] font-bold uppercase tracking-widest"
             >
-              {deletingLinkId ? "同步中..." : "确定销毁"}
+              {deletingLinkId ? "同步中…" : "确定销毁"}
             </Button>
           </div>
         </DialogContent>

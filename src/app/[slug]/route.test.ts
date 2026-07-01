@@ -30,6 +30,9 @@ let deleteCalls = 0
 let logInputs: Array<Record<string, unknown>> = []
 let allowedDomainInputs: Array<string | null> = []
 
+const ACTIVE_EXPIRES_AT = new Date("2099-04-06T12:00:00.000Z")
+const EXPIRED_EXPIRES_AT = new Date("2000-04-04T12:00:00.000Z")
+
 mock.module("@/lib/db", () => ({
   initDb: async () => {
     initDbCalls += 1
@@ -98,7 +101,7 @@ function createLink(overrides: Partial<LinkRecord> = {}): LinkRecord {
     originalUrl: "https://example.com/target",
     clicks: 1,
     maxClicks: null,
-    expiresAt: new Date("2026-04-06T12:00:00.000Z"),
+    expiresAt: ACTIVE_EXPIRES_AT,
     createdAt: new Date("2026-04-05T10:00:00.000Z"),
     ...overrides,
   }
@@ -160,7 +163,7 @@ describe("short-link redirect route", () => {
   })
 
   it("blocks links expired by date without deleting them", async () => {
-    selectResults = [createLink({ expiresAt: new Date("2026-04-04T12:00:00.000Z") })]
+    selectResults = [createLink({ expiresAt: EXPIRED_EXPIRES_AT })]
 
     const response = await callRoute()
 
@@ -191,7 +194,7 @@ describe("short-link redirect route", () => {
   it("falls back to the expired-by-date branch when the atomic update loses a race", async () => {
     selectResults = [
       createLink(),
-      createLink({ expiresAt: new Date("2026-04-04T12:00:00.000Z") }),
+      createLink({ expiresAt: EXPIRED_EXPIRES_AT }),
     ]
     updateRunResult = { rowsAffected: 0 }
 

@@ -52,7 +52,7 @@ const heroOrzVariants = [
   { text: "ORZ", className: "font-black tracking-normal" },
   { text: "OTZ", className: "font-black tracking-normal" },
   { text: "OTL", className: "font-black tracking-normal" },
-  { text: "orz...", className: "font-black tracking-tight" },
+  { text: "orz…", className: "font-black tracking-tight" },
   { text: "o rz", className: "font-black tracking-normal" },
   { text: "O|￣|_", className: "text-[clamp(3.3rem,11vw,8rem)] font-semibold tracking-tight" },
   { text: "＿|￣|○", className: "text-[clamp(3.3rem,11vw,8rem)] font-semibold tracking-tight" },

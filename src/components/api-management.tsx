@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   createClientErrorReporter,
   getResponseErrorMessage,
@@ -12,6 +13,14 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Tabs,
   TabsContent,
@@ -49,13 +58,23 @@ function maskPrefix(prefix: string): string {
 }
 
 const apiManagementReporter = createClientErrorReporter("api_management")
+const apiTabs = new Set(["keys", "docs", "bitwarden", "sharex"])
+
+function normalizeApiTab(value: string | null) {
+  return value && apiTabs.has(value) ? value : "keys"
+}
 
 export function ApiManagementPanel() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const activeTab = normalizeApiTab(searchParams.get("apiTab"))
   const [loading, setLoading] = useState(true)
   const [keys, setKeys] = useState<ApiKeyRecord[]>([])
   const [keyName, setKeyName] = useState("")
   const [creating, setCreating] = useState(false)
   const [deletingKeyId, setDeletingKeyId] = useState<string | null>(null)
+  const [pendingDeleteKey, setPendingDeleteKey] = useState<ApiKeyRecord | null>(null)
   const [latestPlainKey, setLatestPlainKey] = useState<string | null>(null)
   const [sharexApiKey, setSharexApiKey] = useState("")
   const [emailDomains, setEmailDomains] = useState<string[]>([])
@@ -97,9 +116,34 @@ export function ApiManagementPanel() {
   }, [])
 
   useEffect(() => {
-    fetchKeys()
-    fetchDomains()
+    let cancelled = false
+
+    queueMicrotask(() => {
+      if (cancelled) {
+        return
+      }
+
+      void fetchKeys()
+      void fetchDomains()
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [fetchDomains, fetchKeys])
+
+  function handleTabChange(value: string) {
+    const nextTab = normalizeApiTab(value)
+    const params = new URLSearchParams(searchParams.toString())
+    if (nextTab === "keys") {
+      params.delete("apiTab")
+    } else {
+      params.set("apiTab", nextTab)
+    }
+
+    const query = params.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+  }
 
   const apiBaseUrl = useMemo(() => {
     const envBase = process.env.NEXT_PUBLIC_APP_URL?.trim()
@@ -216,6 +260,7 @@ export function ApiManagementPanel() {
       }
 
       setKeys((prev) => prev.filter((item) => item.id !== id))
+      setPendingDeleteKey(null)
       toast.success("API Key 已删除")
     } catch (error) {
       apiManagementReporter.report("delete_key_failed_exception", error, { keyId: id })
@@ -246,7 +291,8 @@ export function ApiManagementPanel() {
   }
 
   return (
-    <Tabs defaultValue="keys" className="space-y-6 sm:space-y-8">
+    <>
+    <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6 sm:space-y-8">
       <TabsList>
         <TabsTrigger value="keys">API Key</TabsTrigger>
         <TabsTrigger value="docs">接口示例</TabsTrigger>
@@ -271,15 +317,21 @@ export function ApiManagementPanel() {
             <section className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
               <h3 className="text-sm font-semibold text-foreground/80 lowercase tracking-wider">NEW KEY</h3>
               <div className="flex flex-col gap-2 sm:flex-row">
+                <label htmlFor="api-key-name" className="sr-only">
+                  密钥名称
+                </label>
                 <Input
-                  placeholder="密钥名称 (可选)"
+                  id="api-key-name"
+                  name="apiKeyName"
+                  placeholder="密钥名称（可选）…"
+                  autoComplete="off"
                   value={keyName}
                   onChange={(e) => setKeyName(e.target.value)}
                   maxLength={60}
                   className="h-10"
                 />
                 <Button onClick={handleCreateKey} disabled={creating} className="h-10 whitespace-nowrap px-6">
-                  {creating ? "正在生成..." : "生成新密钥"}
+                  {creating ? "正在生成…" : "生成新密钥"}
                 </Button>
               </div>
               
@@ -291,11 +343,13 @@ export function ApiManagementPanel() {
                    </div>
                    <div className="flex items-center gap-2 rounded-lg bg-background p-3 border">
                      <code className="min-w-0 flex-1 break-all font-mono text-sm font-medium">{latestPlainKey}</code>
-                     <Button
+                      <Button
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => handleCopy(latestPlainKey, "API Key 已复制")}
                         className="h-8 w-8 text-primary hover:bg-primary/5"
+                        aria-label="复制新 API Key"
+                        title="复制新 API Key"
                       >
                         <Copy className="h-4 w-4" />
                       </Button>
@@ -337,13 +391,13 @@ export function ApiManagementPanel() {
                </div>
 
                {loading ? (
-                  <div className="flex h-32 items-center justify-center rounded-xl border border-dashed bg-muted/5 text-sm text-muted-foreground">正在同步密钥...</div>
+                  <div className="flex h-32 items-center justify-center rounded-xl border border-dashed bg-muted/5 text-sm text-muted-foreground">正在同步密钥…</div>
                 ) : keys.length === 0 ? (
                   <div className="flex h-32 items-center justify-center rounded-xl border border-dashed bg-muted/5 text-sm text-muted-foreground">目前没有活跃的密钥。</div>
                 ) : (
                   <div className="grid gap-3">
                     {keys.map((item) => (
-                      <div key={item.id} className="group relative rounded-xl border bg-card p-4 transition-all hover:border-primary/20 sm:p-5">
+                      <div key={item.id} className="group relative rounded-xl border bg-card p-4 transition-colors hover:border-primary/20 sm:p-5">
                         <div className="flex items-start justify-between gap-4">
                            <div className="min-w-0 space-y-3">
                              <div>
@@ -361,8 +415,10 @@ export function ApiManagementPanel() {
                               variant="ghost"
                               size="icon-sm"
                               className="h-8 w-8 text-destructive opacity-100 transition-opacity hover:bg-destructive/10 sm:opacity-0 sm:group-hover:opacity-100"
-                              onClick={() => handleDeleteKey(item.id)}
+                              onClick={() => setPendingDeleteKey(item)}
                               disabled={deletingKeyId === item.id}
+                              aria-label={`删除 API Key ${item.name || item.keyPrefix}`}
+                              title="删除 API Key"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -439,7 +495,7 @@ export function ApiManagementPanel() {
                 <p className="mb-1 text-[10px] font-bold uppercase text-muted-foreground">Server URL</p>
                 <div className="flex items-center gap-2">
                   <code className="min-w-0 flex-1 break-all font-mono text-xs text-primary">{bitwardenServerUrl}</code>
-                  <Button variant="ghost" size="icon-sm" className="h-8 w-8" onClick={() => handleCopy(bitwardenServerUrl, "Server URL 已复制")}>
+                  <Button variant="ghost" size="icon-sm" className="h-8 w-8" onClick={() => handleCopy(bitwardenServerUrl, "Server URL 已复制")} aria-label="复制 Server URL" title="复制 Server URL">
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -448,7 +504,7 @@ export function ApiManagementPanel() {
                 <p className="mb-1 text-[10px] font-bold uppercase text-muted-foreground">Domain Name</p>
                 <div className="flex items-center gap-2">
                   <code className="min-w-0 flex-1 break-all font-mono text-xs text-primary">{sampleEmailDomain}</code>
-                  <Button variant="ghost" size="icon-sm" className="h-8 w-8" onClick={() => handleCopy(sampleEmailDomain, "邮箱域名已复制")}>
+                  <Button variant="ghost" size="icon-sm" className="h-8 w-8" onClick={() => handleCopy(sampleEmailDomain, "邮箱域名已复制")} aria-label="复制邮箱域名" title="复制邮箱域名">
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -457,7 +513,7 @@ export function ApiManagementPanel() {
                 <p className="mb-1 text-[10px] font-bold uppercase text-muted-foreground">API Access Token</p>
                 <div className="flex items-center gap-2">
                   <code className="min-w-0 flex-1 break-all font-mono text-xs text-primary">{bitwardenApiToken}</code>
-                  <Button variant="ghost" size="icon-sm" className="h-8 w-8" onClick={() => handleCopy(bitwardenApiToken, "API Access Token 已复制")}>
+                  <Button variant="ghost" size="icon-sm" className="h-8 w-8" onClick={() => handleCopy(bitwardenApiToken, "API Access Token 已复制")} aria-label="复制 API Access Token" title="复制 API Access Token">
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -529,8 +585,15 @@ export function ApiManagementPanel() {
               针对 Windows 用户的 ShareX 图片/链接同步神器。下载以下 sxcu 配置文件并导入 ShareX 即可使用。
             </p>
             <div className="pt-4">
+              <label htmlFor="sharex-api-key" className="sr-only">
+                ShareX API Key
+              </label>
               <Input
-                placeholder="在此粘贴你的 API Key 以填充配置"
+                id="sharex-api-key"
+                name="sharexApiKey"
+                placeholder="在此粘贴你的 API Key 以填充配置…"
+                autoComplete="off"
+                spellCheck={false}
                 value={sharexApiKey}
                 onChange={(e) => setSharexApiKey(e.target.value.trim())}
                 className="h-10 border-primary/20 bg-primary/5 placeholder:text-primary/40"
@@ -557,5 +620,34 @@ export function ApiManagementPanel() {
         </div>
       </TabsContent>
     </Tabs>
+
+      <Dialog open={!!pendingDeleteKey} onOpenChange={(open) => !open && setPendingDeleteKey(null)}>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-md">
+          <DialogHeader>
+            <DialogTitle>确认删除这个 API Key？</DialogTitle>
+            <DialogDescription>
+              删除后使用该密钥的外部集成会立即失效。
+              {pendingDeleteKey && (
+                <span className="mt-2 block break-all font-mono text-xs text-muted-foreground">
+                  {pendingDeleteKey.name || maskPrefix(pendingDeleteKey.keyPrefix)}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingDeleteKey(null)} disabled={!!deletingKeyId}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => pendingDeleteKey && handleDeleteKey(pendingDeleteKey.id)}
+              disabled={!!deletingKeyId}
+            >
+              {deletingKeyId ? "删除中…" : "删除 API Key"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

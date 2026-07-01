@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { UserMenu } from "@/components/user-menu";
 import {
   createClientErrorReporter,
@@ -291,6 +292,16 @@ const initialDomainForm: DomainFormState = {
 
 const adminReporter = createClientErrorReporter("admin_client");
 const ADMIN_PAGE_SIZE = 10;
+const adminTabs = new Set(["links", "users", "emails", "settings"]);
+
+function getAdminTab(value: string | null | undefined) {
+  return value && adminTabs.has(value) ? value : "links";
+}
+
+function getPositiveAdminPage(value: string | null | undefined) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 function getDeleteLinkSuccessState(
   remainingItems: number,
@@ -421,9 +432,15 @@ function buildAdminEmailSource(
 }
 
 export function AdminClient({ user }: AdminClientProps) {
-  const [activeTab, setActiveTab] = useState("links");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentSearch = searchParams.toString();
+  const [activeTab, setActiveTab] = useState(getAdminTab(searchParams.get("tab")));
   const [links, setLinks] = useState<AdminLink[]>([]);
-  const [linksPage, setLinksPage] = useState(1);
+  const [linksPage, setLinksPage] = useState(
+    () => getPositiveAdminPage(searchParams.get("linksPage") ?? searchParams.get("page")) ?? 1,
+  );
   const [linksLimit, setLinksLimit] = useState(ADMIN_PAGE_SIZE);
   const [linksTotal, setLinksTotal] = useState(0);
   const [linksTotalPages, setLinksTotalPages] = useState(1);
@@ -432,21 +449,27 @@ export function AdminClient({ user }: AdminClientProps) {
   const [mailboxes, setMailboxes] = useState<AdminMailbox[]>([]);
   const [messages, setMessages] = useState<AdminMailboxMessage[]>([]);
   const [archives, setArchives] = useState<ArchivedInboundEmail[]>([]);
-  const [emailSearch, setEmailSearch] = useState("");
-  const [mailboxesPage, setMailboxesPage] = useState(1);
+  const [emailSearch, setEmailSearch] = useState(searchParams.get("emailSearch") ?? "");
+  const [mailboxesPage, setMailboxesPage] = useState(
+    () => getPositiveAdminPage(searchParams.get("mailboxesPage")) ?? 1,
+  );
   const [mailboxesTotal, setMailboxesTotal] = useState(0);
   const [mailboxesTotalPages, setMailboxesTotalPages] = useState(1);
-  const [messagesPage, setMessagesPage] = useState(1);
+  const [messagesPage, setMessagesPage] = useState(
+    () => getPositiveAdminPage(searchParams.get("messagesPage")) ?? 1,
+  );
   const [messagesTotal, setMessagesTotal] = useState(0);
   const [messagesTotalPages, setMessagesTotalPages] = useState(1);
-  const [archivesPage, setArchivesPage] = useState(1);
+  const [archivesPage, setArchivesPage] = useState(
+    () => getPositiveAdminPage(searchParams.get("archivesPage")) ?? 1,
+  );
   const [archivesTotal, setArchivesTotal] = useState(0);
   const [archivesTotalPages, setArchivesTotalPages] = useState(1);
   const [selectedMailboxId, setSelectedMailboxId] = useState<string | null>(
     null,
   );
   const [emailListMode, setEmailListMode] = useState<"messages" | "archives">(
-    "messages",
+    searchParams.get("emailListMode") === "archives" ? "archives" : "messages",
   );
   const [loadingEmailData, setLoadingEmailData] = useState(false);
   const [emailDataLoaded, setEmailDataLoaded] = useState(false);
@@ -504,6 +527,84 @@ export function AdminClient({ user }: AdminClientProps) {
     }
     return "outline";
   }
+
+  const replaceUrlState = useCallback(
+    (next: {
+      tab?: string;
+      linksPage?: number;
+      emailSearch?: string;
+      mailboxesPage?: number;
+      messagesPage?: number;
+      archivesPage?: number;
+      emailListMode?: "messages" | "archives";
+    }) => {
+      const params = new URLSearchParams(currentSearch);
+      const nextTab = next.tab ? getAdminTab(next.tab) : activeTab;
+      const nextLinksPage = next.linksPage ?? linksPage;
+      const nextEmailSearch = next.emailSearch ?? emailSearch;
+      const nextMailboxesPage = next.mailboxesPage ?? mailboxesPage;
+      const nextMessagesPage = next.messagesPage ?? messagesPage;
+      const nextArchivesPage = next.archivesPage ?? archivesPage;
+      const nextEmailListMode = next.emailListMode ?? emailListMode;
+
+      if (nextTab === "links") {
+        params.delete("tab");
+      } else {
+        params.set("tab", nextTab);
+      }
+
+      if (nextLinksPage > 1) {
+        params.set("linksPage", String(nextLinksPage));
+      } else {
+        params.delete("linksPage");
+      }
+
+      if (nextEmailSearch.trim()) {
+        params.set("emailSearch", nextEmailSearch.trim());
+      } else {
+        params.delete("emailSearch");
+      }
+
+      if (nextMailboxesPage > 1) {
+        params.set("mailboxesPage", String(nextMailboxesPage));
+      } else {
+        params.delete("mailboxesPage");
+      }
+
+      if (nextMessagesPage > 1) {
+        params.set("messagesPage", String(nextMessagesPage));
+      } else {
+        params.delete("messagesPage");
+      }
+
+      if (nextArchivesPage > 1) {
+        params.set("archivesPage", String(nextArchivesPage));
+      } else {
+        params.delete("archivesPage");
+      }
+
+      if (nextEmailListMode === "archives") {
+        params.set("emailListMode", nextEmailListMode);
+      } else {
+        params.delete("emailListMode");
+      }
+
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [
+      activeTab,
+      archivesPage,
+      currentSearch,
+      emailListMode,
+      emailSearch,
+      linksPage,
+      mailboxesPage,
+      messagesPage,
+      pathname,
+      router,
+    ],
+  );
 
   const fetchData = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -665,12 +766,32 @@ export function AdminClient({ user }: AdminClientProps) {
   );
 
   useEffect(() => {
-    fetchData();
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (!cancelled) {
+        void fetchData();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [fetchData]);
 
   useEffect(() => {
     if (activeTab === "emails" && !emailDataLoaded && !loadingEmailData) {
-      void fetchEmailData();
+      let cancelled = false;
+
+      queueMicrotask(() => {
+        if (!cancelled) {
+          void fetchEmailData();
+        }
+      });
+
+      return () => {
+        cancelled = true;
+      };
     }
   }, [activeTab, emailDataLoaded, loadingEmailData, fetchEmailData]);
 
@@ -696,6 +817,12 @@ export function AdminClient({ user }: AdminClientProps) {
 
   function handleResetEmailSearch() {
     setEmailSearch("");
+    replaceUrlState({
+      emailSearch: "",
+      mailboxesPage: 1,
+      messagesPage: 1,
+      archivesPage: 1,
+    });
     void fetchEmailData("", {
       mailboxesPage: 1,
       messagesPage: 1,
@@ -704,14 +831,23 @@ export function AdminClient({ user }: AdminClientProps) {
   }
 
   function handleChangeTab(nextTab: string) {
-    setActiveTab(nextTab);
+    const normalizedTab = getAdminTab(nextTab);
+    setActiveTab(normalizedTab);
+    replaceUrlState({ tab: normalizedTab });
     setDataError(null);
-    if (nextTab !== "emails") {
+    if (normalizedTab !== "emails") {
       setEmailDataError(null);
     }
   }
 
   async function handleSearchEmails() {
+    replaceUrlState({
+      tab: "emails",
+      emailSearch,
+      mailboxesPage: 1,
+      messagesPage: 1,
+      archivesPage: 1,
+    });
     await fetchEmailData(emailSearch, {
       mailboxesPage: 1,
       messagesPage: 1,
@@ -720,14 +856,20 @@ export function AdminClient({ user }: AdminClientProps) {
   }
 
   async function handleChangeMailboxesPage(nextPage: number) {
+    setMailboxesPage(nextPage);
+    replaceUrlState({ tab: "emails", mailboxesPage: nextPage });
     await fetchEmailData(emailSearch, { mailboxesPage: nextPage });
   }
 
   async function handleChangeMessagesPage(nextPage: number) {
+    setMessagesPage(nextPage);
+    replaceUrlState({ tab: "emails", messagesPage: nextPage });
     await fetchEmailData(emailSearch, { messagesPage: nextPage });
   }
 
   async function handleChangeArchivesPage(nextPage: number) {
+    setArchivesPage(nextPage);
+    replaceUrlState({ tab: "emails", archivesPage: nextPage });
     await fetchEmailData(emailSearch, { archivesPage: nextPage });
   }
 
@@ -767,6 +909,7 @@ export function AdminClient({ user }: AdminClientProps) {
 
         if (deleteState.nextPage !== linksPage) {
           setLinksPage(deleteState.nextPage);
+          replaceUrlState({ linksPage: deleteState.nextPage });
           return;
         }
 
@@ -1143,8 +1286,6 @@ export function AdminClient({ user }: AdminClientProps) {
   const selectedLinkExpirationText = selectedLink?.expiresAt
     ? formatDate(selectedLink.expiresAt)
     : "长期有效";
-  const selectedMailbox =
-    mailboxes.find((mailbox) => mailbox.id === selectedMailboxId) ?? null;
   const selectedEmailSubject = selectedEmailItem?.summary.subject || "(无主题)";
   const selectedEmailSender = selectedEmailItem
     ? selectedEmailItem.summary.fromName || selectedEmailItem.summary.from
@@ -1264,7 +1405,7 @@ export function AdminClient({ user }: AdminClientProps) {
           <div className="min-h-0 flex-1 overflow-hidden px-6 py-5">
             {loadingEmailDetail ? (
               <div className="flex h-full min-h-80 items-center justify-center text-sm text-muted-foreground">
-                正在加载邮件详情...
+                正在加载邮件详情…
               </div>
             ) : emailDetailError ? (
               <div className="flex h-full min-h-80 flex-col items-center justify-center gap-4 text-sm text-destructive">
@@ -1387,7 +1528,7 @@ export function AdminClient({ user }: AdminClientProps) {
         <div className="min-h-0 flex-1 overflow-auto">
           {loading ? (
             <div className="flex h-full min-h-80 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-              正在加载记录...
+              正在加载记录…
             </div>
           ) : dataError ? (
             <div className="flex h-full min-h-80 flex-col items-center justify-center gap-4 px-6 text-center">
@@ -1515,9 +1656,11 @@ export function AdminClient({ user }: AdminClientProps) {
                 variant="outline"
                 size="sm"
                 disabled={linksPage <= 1 || loading}
-                onClick={() =>
-                  setLinksPage((current) => Math.max(1, current - 1))
-                }
+                onClick={() => {
+                  const nextPage = Math.max(1, linksPage - 1);
+                  setLinksPage(nextPage);
+                  replaceUrlState({ linksPage: nextPage });
+                }}
                 className="h-8"
               >
                 上一页
@@ -1526,11 +1669,11 @@ export function AdminClient({ user }: AdminClientProps) {
                 variant="outline"
                 size="sm"
                 disabled={linksPage >= linksTotalPages || loading}
-                onClick={() =>
-                  setLinksPage((current) =>
-                    Math.min(linksTotalPages, current + 1),
-                  )
-                }
+                onClick={() => {
+                  const nextPage = Math.min(linksTotalPages, linksPage + 1);
+                  setLinksPage(nextPage);
+                  replaceUrlState({ linksPage: nextPage });
+                }}
                 className="h-8"
               >
                 下一页
@@ -1740,7 +1883,7 @@ export function AdminClient({ user }: AdminClientProps) {
                   <h4 className="text-sm font-semibold">最近访问日志</h4>
                   {logsLoading ? (
                     <div className="flex h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 text-sm text-muted-foreground">
-                      正在拉取日志...
+                      正在拉取日志…
                     </div>
                   ) : logsError ? (
                     <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-destructive/5 px-4 text-center text-sm text-destructive">
@@ -1838,8 +1981,11 @@ export function AdminClient({ user }: AdminClientProps) {
           </div>
           <div className="flex gap-2">
             <Input
+              id="admin-email-search"
+              name="adminEmailSearch"
               aria-label="搜索邮箱、用户、主题、发件人"
-              placeholder="搜索邮箱、用户、主题、发件人"
+              placeholder="搜索邮箱、用户、主题、发件人…"
+              autoComplete="off"
               value={emailSearch}
               onChange={(e) => setEmailSearch(e.target.value)}
               onKeyDown={(e) => {
@@ -1875,7 +2021,7 @@ export function AdminClient({ user }: AdminClientProps) {
         <div className="min-h-0 flex-1 overflow-auto">
           {loadingEmailData && !emailDataLoaded ? (
             <div className="flex h-full min-h-80 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-              正在加载邮箱...
+              正在加载邮箱…
             </div>
           ) : emailDataError ? (
             <div className="flex h-full min-h-80 flex-col items-center justify-center gap-4 px-6 text-center">
@@ -1994,7 +2140,10 @@ export function AdminClient({ user }: AdminClientProps) {
               type="button"
               variant={emailListMode === "messages" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setEmailListMode("messages")}
+              onClick={() => {
+                setEmailListMode("messages");
+                replaceUrlState({ tab: "emails", emailListMode: "messages" });
+              }}
               className="h-8 justify-center"
             >
               <Inbox className="h-3.5 w-3.5" />
@@ -2004,7 +2153,10 @@ export function AdminClient({ user }: AdminClientProps) {
               type="button"
               variant={emailListMode === "archives" ? "secondary" : "ghost"}
               size="sm"
-              onClick={() => setEmailListMode("archives")}
+              onClick={() => {
+                setEmailListMode("archives");
+                replaceUrlState({ tab: "emails", emailListMode: "archives" });
+              }}
               className="h-8 justify-center"
             >
               <Archive className="h-3.5 w-3.5" />
@@ -2016,7 +2168,7 @@ export function AdminClient({ user }: AdminClientProps) {
         <div className="min-h-0 flex-1 overflow-auto">
           {loadingEmailData && !emailDataLoaded ? (
             <div className="flex h-full min-h-80 items-center justify-center text-sm text-muted-foreground">
-              正在同步邮件...
+              正在同步邮件…
             </div>
           ) : emailDataError ? (
             <div className="flex h-full min-h-80 items-center justify-center px-6 text-center text-sm text-destructive">
@@ -2337,7 +2489,7 @@ export function AdminClient({ user }: AdminClientProps) {
                 <CardContent>
                   {loading ? (
                     <div className="py-14 text-center text-sm text-muted-foreground">
-                      正在加载...
+                      正在加载…
                     </div>
                   ) : dataError ? (
                     <div className="space-y-4 py-14 text-center text-sm text-destructive">
@@ -2557,6 +2709,8 @@ export function AdminClient({ user }: AdminClientProps) {
                       <Label htmlFor="siteName">网站名称</Label>
                       <Input
                         id="siteName"
+                        name="siteName"
+                        autoComplete="organization"
                         value={settings.siteName}
                         onChange={(e) =>
                           setSettings((s) => ({
@@ -2570,7 +2724,9 @@ export function AdminClient({ user }: AdminClientProps) {
                       <Label htmlFor="siteUrl">站点地址</Label>
                       <Input
                         id="siteUrl"
+                        name="siteUrl"
                         type="url"
+                        autoComplete="url"
                         value={settings.siteUrl}
                         onChange={(e) =>
                           setSettings((s) => ({
@@ -2584,7 +2740,10 @@ export function AdminClient({ user }: AdminClientProps) {
                       <Label htmlFor="telegramBotUsername">TG Bot 用户名</Label>
                       <Input
                         id="telegramBotUsername"
-                        placeholder="例如：shortly_bot（可填写 @shortly_bot）"
+                        name="telegramBotUsername"
+                        placeholder="例如：shortly_bot（可填写 @shortly_bot）…"
+                        autoComplete="off"
+                        spellCheck={false}
                         value={settings.telegramBotUsername}
                         onChange={(e) =>
                           setSettings((s) => ({
@@ -2604,8 +2763,11 @@ export function AdminClient({ user }: AdminClientProps) {
                       </Label>
                       <Input
                         id="userMaxLinksPerHour"
+                        name="userMaxLinksPerHour"
                         type="number"
                         min="1"
+                        autoComplete="off"
+                        inputMode="numeric"
                         value={settings.userMaxLinksPerHour}
                         onChange={(e) =>
                           setSettings((s) => ({
@@ -2624,7 +2786,7 @@ export function AdminClient({ user }: AdminClientProps) {
                       className="mt-2 w-full sm:w-fit"
                     >
                       <Save className="h-4 w-4" />
-                      {savingSettings ? "保存中..." : "保存"}
+                      {savingSettings ? "保存中…" : "保存"}
                     </Button>
                   </CardContent>
                 </Card>
@@ -2654,7 +2816,7 @@ export function AdminClient({ user }: AdminClientProps) {
                   <CardContent>
                     {loading ? (
                       <div className="py-14 text-center text-sm text-muted-foreground">
-                        正在加载...
+                        正在加载…
                       </div>
                     ) : dataError ? (
                       <div className="space-y-4 py-14 text-center text-sm text-destructive">
@@ -2832,7 +2994,10 @@ export function AdminClient({ user }: AdminClientProps) {
                 <Label htmlFor="domainHost">域名</Label>
                 <Input
                   id="domainHost"
-                  placeholder="example.com"
+                  name="domainHost"
+                  placeholder="example.com…"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={domainForm.host}
                   onChange={(e) => updateDomainForm("host", e.target.value)}
                 />
@@ -2841,6 +3006,7 @@ export function AdminClient({ user }: AdminClientProps) {
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm">
                   <input
+                    name="supportsShortLinks"
                     type="checkbox"
                     checked={domainForm.supportsShortLinks}
                     onChange={(e) =>
@@ -2852,6 +3018,7 @@ export function AdminClient({ user }: AdminClientProps) {
                 </label>
                 <label className="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm">
                   <input
+                    name="supportsTempEmail"
                     type="checkbox"
                     checked={domainForm.supportsTempEmail}
                     onChange={(e) =>
@@ -2863,6 +3030,7 @@ export function AdminClient({ user }: AdminClientProps) {
                 </label>
                 <label className="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm">
                   <input
+                    name="isActive"
                     type="checkbox"
                     checked={domainForm.isActive}
                     onChange={(e) =>
@@ -2874,6 +3042,7 @@ export function AdminClient({ user }: AdminClientProps) {
                 </label>
                 <label className="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm">
                   <input
+                    name="isDefaultShortDomain"
                     type="checkbox"
                     checked={domainForm.isDefaultShortDomain}
                     onChange={(e) =>
@@ -2888,6 +3057,7 @@ export function AdminClient({ user }: AdminClientProps) {
                 </label>
                 <label className="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm sm:col-span-2">
                   <input
+                    name="isDefaultEmailDomain"
                     type="checkbox"
                     checked={domainForm.isDefaultEmailDomain}
                     onChange={(e) =>
@@ -2909,9 +3079,12 @@ export function AdminClient({ user }: AdminClientProps) {
                   </Label>
                   <Input
                     id="domainShortLinkMinSlugLength"
+                    name="domainShortLinkMinSlugLength"
                     type="number"
                     min="1"
                     max="50"
+                    autoComplete="off"
+                    inputMode="numeric"
                     value={domainForm.shortLinkMinSlugLength}
                     onChange={(e) =>
                       updateDomainForm(
@@ -2936,9 +3109,12 @@ export function AdminClient({ user }: AdminClientProps) {
                   </Label>
                   <Input
                     id="domainTempEmailMinLocalPartLength"
+                    name="domainTempEmailMinLocalPartLength"
                     type="number"
                     min="1"
                     max="64"
+                    autoComplete="off"
+                    inputMode="numeric"
                     value={domainForm.tempEmailMinLocalPartLength}
                     onChange={(e) =>
                       updateDomainForm(
@@ -2971,7 +3147,7 @@ export function AdminClient({ user }: AdminClientProps) {
                 >
                   <Save className="h-4 w-4" />
                   {savingDomain
-                    ? "保存中..."
+                    ? "保存中…"
                     : editingDomain
                       ? "保存修改"
                       : "创建域名"}
@@ -3060,7 +3236,7 @@ export function AdminClient({ user }: AdminClientProps) {
             <div className="flex-1 overflow-hidden py-4">
               {loadingEmailDetail ? (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                  正在加载邮件详情...
+                  正在加载邮件详情…
                 </div>
               ) : emailDetailError ? (
                 <div className="flex h-full flex-col items-center justify-center gap-4 text-sm text-destructive">
@@ -3172,7 +3348,7 @@ export function AdminClient({ user }: AdminClientProps) {
             </div>
             {logsLoading ? (
               <div className="py-10 text-center text-sm text-muted-foreground">
-                正在加载...
+                正在加载…
               </div>
             ) : logsError ? (
               <div className="space-y-4 py-10 text-center text-sm text-destructive">
@@ -3296,7 +3472,7 @@ export function AdminClient({ user }: AdminClientProps) {
                 }
                 disabled={!!deletingLinkId}
               >
-                {deletingLinkId ? "删除中..." : "确认删除"}
+                {deletingLinkId ? "删除中…" : "确认删除"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -3335,7 +3511,7 @@ export function AdminClient({ user }: AdminClientProps) {
                 }
                 disabled={!!deletingDomainId}
               >
-                {deletingDomainId ? "删除中..." : "确认删除"}
+                {deletingDomainId ? "删除中…" : "确认删除"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -3388,8 +3564,8 @@ export function AdminClient({ user }: AdminClientProps) {
                 )}
                 {mutatingUserId
                   ? pendingUserStatusChange?.banned
-                    ? "解封中..."
-                    : "封禁中..."
+                    ? "解封中…"
+                    : "封禁中…"
                   : pendingUserStatusChange?.banned
                     ? "确认解封"
                     : "确认封禁"}

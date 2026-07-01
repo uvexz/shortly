@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import {
   createClientErrorReporter,
@@ -170,6 +171,11 @@ function buildMessageSource(detail: MessageDetailRecord) {
 
 const tempEmailReporter = createClientErrorReporter("temp_email_manager")
 const TEMP_EMAIL_PAGE_SIZE = 10
+
+function getPositivePageParam(value: string | null | undefined) {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
 
 function getDeleteSuccessState(remainingItems: number, currentPage: number) {
   if (remainingItems > 0) {
@@ -392,7 +398,7 @@ function getCopySourceButtonLabel() {
 }
 
 function getLoadingDetailCopy() {
-  return "正在加载邮件内容..."
+  return "正在加载邮件内容…"
 }
 
 function getNotFoundDetailCopy() {
@@ -969,6 +975,10 @@ function getMessageDetailAttachmentTitle() {
 }
 
 export function TempEmailManager() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentSearch = searchParams.toString()
   const [mailboxes, setMailboxes] = useState<MailboxRecord[]>([])
   const [selectedMailboxId, setSelectedMailboxId] = useState<string | null>(null)
   const [messages, setMessages] = useState<MessageRecord[]>([])
@@ -979,12 +989,12 @@ export function TempEmailManager() {
   const [domainsError, setDomainsError] = useState<string | null>(null)
   const [loadingMailboxes, setLoadingMailboxes] = useState(true)
   const [mailboxesError, setMailboxesError] = useState<string | null>(null)
-  const [mailboxPage, setMailboxPage] = useState(1)
+  const [mailboxPage, setMailboxPage] = useState(() => getPositivePageParam(searchParams.get("mailboxPage")) ?? 1)
   const [mailboxTotalPages, setMailboxTotalPages] = useState(1)
   const [mailboxTotalItems, setMailboxTotalItems] = useState(0)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [messagesError, setMessagesError] = useState<string | null>(null)
-  const [messagePage, setMessagePage] = useState(1)
+  const [messagePage, setMessagePage] = useState(() => getPositivePageParam(searchParams.get("messagePage")) ?? 1)
   const [messageTotalPages, setMessageTotalPages] = useState(1)
   const [messageTotalItems, setMessageTotalItems] = useState(0)
   const [creatingMailbox, setCreatingMailbox] = useState(false)
@@ -996,7 +1006,9 @@ export function TempEmailManager() {
   const [messageDetail, setMessageDetail] = useState<MessageDetailRecord | null>(null)
   const [messageDetailError, setMessageDetailError] = useState<string | null>(null)
   const [loadingMessageDetail, setLoadingMessageDetail] = useState(false)
-  const [messageDetailTab, setMessageDetailTab] = useState<MessageDetailTab>(getDefaultDetailTab())
+  const [messageDetailTab, setMessageDetailTab] = useState<MessageDetailTab>(() =>
+    normalizeDetailTab(searchParams.get("messageTab") ?? getDefaultDetailTab(), null)
+  )
   const [messageDetailReloadNonce, setMessageDetailReloadNonce] = useState(0)
   const latestMessageRequestIdRef = useRef(0)
   const latestDetailRequestIdRef = useRef(0)
@@ -1008,6 +1020,49 @@ export function TempEmailManager() {
     selectedMailboxIdRef.current = nextMailboxId
     setSelectedMailboxId(nextMailboxId)
   }, [])
+
+  const replaceUrlState = useCallback(
+    (next: { mailboxPage?: number; messagePage?: number; messageTab?: MessageDetailTab }) => {
+      const params = new URLSearchParams(currentSearch)
+      const nextMailboxPage = next.mailboxPage ?? mailboxPage
+      const nextMessagePage = next.messagePage ?? messagePage
+      const nextMessageTab = next.messageTab ?? messageDetailTab
+
+      if (nextMailboxPage > 1) {
+        params.set("mailboxPage", String(nextMailboxPage))
+      } else {
+        params.delete("mailboxPage")
+      }
+
+      if (nextMessagePage > 1) {
+        params.set("messagePage", String(nextMessagePage))
+      } else {
+        params.delete("messagePage")
+      }
+
+      if (nextMessageTab === getDefaultDetailTab()) {
+        params.delete("messageTab")
+      } else {
+        params.set("messageTab", nextMessageTab)
+      }
+
+      const query = params.toString()
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+    },
+    [currentSearch, mailboxPage, messageDetailTab, messagePage, pathname, router]
+  )
+
+  function handleMailboxPageChange(nextPage: number) {
+    const normalizedPage = Math.max(1, nextPage)
+    setMailboxPage(normalizedPage)
+    replaceUrlState({ mailboxPage: normalizedPage })
+  }
+
+  function handleMessagePageChange(nextPage: number) {
+    const normalizedPage = Math.max(1, nextPage)
+    setMessagePage(normalizedPage)
+    replaceUrlState({ messagePage: normalizedPage })
+  }
 
   const selectedMailbox = useMemo(
     () => mailboxes.find((item) => item.id === selectedMailboxId) ?? null,
@@ -1149,7 +1204,8 @@ export function TempEmailManager() {
     resetMessageDetail()
     await fetchMailboxes(1, { silent: !showToast })
     setMailboxPage(1)
-  }, [fetchMailboxes, resetMessageDetail])
+    replaceUrlState({ mailboxPage: 1 })
+  }, [fetchMailboxes, replaceUrlState, resetMessageDetail])
 
   const fetchMessages = useCallback(async (mailboxId: string, currentPage: number, options?: { silent?: boolean }) => {
     const isSilent = options?.silent === true
@@ -1234,30 +1290,62 @@ export function TempEmailManager() {
   }, [handleMailboxUnavailable])
 
   useEffect(() => {
-    fetchDomains()
+    let cancelled = false
+
+    queueMicrotask(() => {
+      if (!cancelled) {
+        void fetchDomains()
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [fetchDomains])
 
   useEffect(() => {
-    fetchMailboxes(mailboxPage)
+    let cancelled = false
+
+    queueMicrotask(() => {
+      if (!cancelled) {
+        void fetchMailboxes(mailboxPage)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [fetchMailboxes, mailboxPage])
 
   const canRetryMessages = !!selectedMailboxId && !loadingMessages
 
   useEffect(() => {
-    latestDetailRequestIdRef.current += 1
-    resetMessageDetail()
+    let cancelled = false
 
-    if (!selectedMailboxId) {
-      latestMessageRequestIdRef.current += 1
-      setMessages([])
-      setMessagesError(null)
-      setLoadingMessages(false)
-      setMessageTotalItems(0)
-      setMessageTotalPages(1)
-      return
+    queueMicrotask(() => {
+      if (cancelled) {
+        return
+      }
+
+      latestDetailRequestIdRef.current += 1
+      resetMessageDetail()
+
+      if (!selectedMailboxId) {
+        latestMessageRequestIdRef.current += 1
+        setMessages([])
+        setMessagesError(null)
+        setLoadingMessages(false)
+        setMessageTotalItems(0)
+        setMessageTotalPages(1)
+        return
+      }
+
+      void fetchMessages(selectedMailboxId, messagePage)
+    })
+
+    return () => {
+      cancelled = true
     }
-
-    fetchMessages(selectedMailboxId, messagePage)
   }, [fetchMessages, messagePage, resetMessageDetail, selectedMailboxId])
 
   const handleRetryMessageDetail = useCallback(() => {
@@ -1296,6 +1384,7 @@ export function TempEmailManager() {
     setMessageDetailError(null)
     setLoadingMessageDetail(true)
     setMessageDetailTab(getDefaultDetailTab())
+    replaceUrlState({ messageTab: getDefaultDetailTab() })
     if (shouldAutoMarkRead(message)) {
       void handleMarkRead(message.id)
     }
@@ -1309,7 +1398,9 @@ export function TempEmailManager() {
   }
 
   function handleMessageDetailTabChange(value: string) {
-    setMessageDetailTab(normalizeDetailTab(value, messageDetail))
+    const nextTab = normalizeDetailTab(value, messageDetail)
+    setMessageDetailTab(nextTab)
+    replaceUrlState({ messageTab: nextTab })
   }
 
   useEffect(() => {
@@ -1317,14 +1408,26 @@ export function TempEmailManager() {
       return
     }
 
-    const nextSelectedMessage = messages.find((item) => item.id === selectedMessage.id) ?? null
-    if (!nextSelectedMessage) {
-      resetMessageDetail()
-      return
-    }
+    let cancelled = false
 
-    if (nextSelectedMessage !== selectedMessage) {
-      setSelectedMessage(nextSelectedMessage)
+    queueMicrotask(() => {
+      if (cancelled) {
+        return
+      }
+
+      const nextSelectedMessage = messages.find((item) => item.id === selectedMessage.id) ?? null
+      if (!nextSelectedMessage) {
+        resetMessageDetail()
+        return
+      }
+
+      if (nextSelectedMessage !== selectedMessage) {
+        setSelectedMessage(nextSelectedMessage)
+      }
+    })
+
+    return () => {
+      cancelled = true
     }
   }, [messages, resetMessageDetail, selectedMessage])
 
@@ -1333,7 +1436,17 @@ export function TempEmailManager() {
       return
     }
 
-    setMessageDetail((current) => (current ? { ...current, isRead: true } : current))
+    let cancelled = false
+
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setMessageDetail((current) => (current ? { ...current, isRead: true } : current))
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [selectedMessage?.isRead])
 
   const selectedMessageId = getSelectedMessageIdValue(selectedMessage)
@@ -1413,7 +1526,7 @@ export function TempEmailManager() {
       toast.success("临时邮箱已创建")
       setMailboxInput("")
       if (mailboxPage !== 1) {
-        setMailboxPage(1)
+        handleMailboxPageChange(1)
       } else {
         await fetchMailboxes(1)
       }
@@ -1450,58 +1563,71 @@ export function TempEmailManager() {
   }, [fetchMailboxes, mailboxPage])
 
   useEffect(() => {
-    const currentSelectedMessageId = selectedMessage?.id
-    if (!currentSelectedMessageId) {
-      latestDetailRequestIdRef.current += 1
+    let cancelled = false
+
+    queueMicrotask(() => {
+      if (cancelled) {
+        return
+      }
+
+      const currentSelectedMessageId = selectedMessage?.id
+      if (!currentSelectedMessageId) {
+        latestDetailRequestIdRef.current += 1
+        setMessageDetail(null)
+        setMessageDetailError(null)
+        setLoadingMessageDetail(false)
+        setMessageDetailTab(getDefaultDetailTab())
+        return
+      }
+
+      const requestId = latestDetailRequestIdRef.current + 1
+      latestDetailRequestIdRef.current = requestId
       setMessageDetail(null)
       setMessageDetailError(null)
-      setLoadingMessageDetail(false)
-      setMessageDetailTab(getDefaultDetailTab())
-      return
-    }
+      setLoadingMessageDetail(true)
 
-    const requestId = latestDetailRequestIdRef.current + 1
-    latestDetailRequestIdRef.current = requestId
-    setMessageDetail(null)
-    setMessageDetailError(null)
-    setLoadingMessageDetail(true)
+      void (async () => {
+        try {
+          const res = await fetch(`/api/emails/messages/${currentSelectedMessageId}`)
+          const body = await readOptionalJson<MessageDetailResponse & { error?: string }>(res)
+          if (!res.ok) {
+            const message = getResponseErrorMessage(body, getMessageDetailOpenErrorCopy())
+            tempEmailReporter.warn("fetch_message_detail_failed_response", {
+              messageId: currentSelectedMessageId,
+              status: res.status,
+            })
+            if (latestDetailRequestIdRef.current === requestId) {
+              setMessageDetailError(message)
+            }
+            return
+          }
 
-    void (async () => {
-      try {
-        const res = await fetch(`/api/emails/messages/${currentSelectedMessageId}`)
-        const body = await readOptionalJson<MessageDetailResponse & { error?: string }>(res)
-        if (!res.ok) {
-          const message = getResponseErrorMessage(body, getMessageDetailOpenErrorCopy())
-          tempEmailReporter.warn("fetch_message_detail_failed_response", {
+          if (!body?.data || latestDetailRequestIdRef.current !== requestId) {
+            return
+          }
+
+          setMessageDetail(body.data)
+          setMessageDetailTab(getInitialMessageDetailTab(body.data))
+        } catch (error) {
+          const message = getUserFacingErrorMessage(error, getMessageDetailOpenErrorCopy())
+          tempEmailReporter.report("fetch_message_detail_failed_exception", error, {
             messageId: currentSelectedMessageId,
-            status: res.status,
           })
           if (latestDetailRequestIdRef.current === requestId) {
             setMessageDetailError(message)
           }
-          return
+        } finally {
+          if (latestDetailRequestIdRef.current === requestId) {
+            setLoadingMessageDetail(false)
+          }
         }
+      })()
+    })
 
-        if (!body?.data || latestDetailRequestIdRef.current !== requestId) {
-          return
-        }
-
-        setMessageDetail(body.data)
-        setMessageDetailTab(getInitialMessageDetailTab(body.data))
-      } catch (error) {
-        const message = getUserFacingErrorMessage(error, getMessageDetailOpenErrorCopy())
-        tempEmailReporter.report("fetch_message_detail_failed_exception", error, {
-          messageId: currentSelectedMessageId,
-        })
-        if (latestDetailRequestIdRef.current === requestId) {
-          setMessageDetailError(message)
-        }
-      } finally {
-        if (latestDetailRequestIdRef.current === requestId) {
-          setLoadingMessageDetail(false)
-        }
-      }
-    })()
+    return () => {
+      cancelled = true
+      latestDetailRequestIdRef.current += 1
+    }
   }, [messageDetailReloadNonce, selectedMessage?.id])
 
   async function handleDeleteMessage(messageId: string) {
@@ -1527,7 +1653,7 @@ export function TempEmailManager() {
       await fetchMailboxes(mailboxPage, { silent: true })
       if (selectedMailboxId) {
         if (deleteState.nextPage !== messagePage) {
-          setMessagePage(deleteState.nextPage)
+          handleMessagePageChange(deleteState.nextPage)
         } else if (deleteState.shouldRefetch) {
           await fetchMessages(selectedMailboxId, deleteState.nextPage, { silent: true })
         }
@@ -1566,13 +1692,14 @@ export function TempEmailManager() {
         setMessagesError(null)
         setLoadingMessages(false)
         setMessagePage(1)
+        replaceUrlState({ messagePage: 1 })
         setMessageTotalItems(0)
         setMessageTotalPages(1)
         resetMessageDetail()
       }
 
       if (deleteState.nextPage !== mailboxPage) {
-        setMailboxPage(deleteState.nextPage)
+        handleMailboxPageChange(deleteState.nextPage)
       } else {
         const nextMailboxes = mailboxes.filter((item) => item.id !== mailbox.id)
         setMailboxes(nextMailboxes)
@@ -1769,8 +1896,11 @@ export function TempEmailManager() {
               <div className="flex items-center gap-2">
                 <Input
                   id="temp-email-prefix"
+                  name="mailboxPrefix"
                   aria-label="邮箱前缀"
-                  placeholder="例如 project-test"
+                  placeholder="例如：project-test…"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={mailboxInput}
                   onChange={(e) => setMailboxInput(e.target.value)}
                   className="h-10 min-w-0"
@@ -1778,7 +1908,7 @@ export function TempEmailManager() {
                 <span className="text-sm text-muted-foreground">@</span>
                 <Select value={selectedDomain} onValueChange={setSelectedDomain} disabled={emailDomains.length < 1}>
                   <SelectTrigger id="temp-email-domain" aria-label="邮箱域名" className="h-10 w-32 shrink-0">
-                    <SelectValue placeholder="域名" />
+                    <SelectValue placeholder="域名…" />
                   </SelectTrigger>
                   <SelectContent>
                     {emailDomains.map((domain) => (
@@ -1793,11 +1923,15 @@ export function TempEmailManager() {
 
             <Button onClick={handleCreateMailbox} disabled={!canCreateMailbox} className="h-10 w-full">
               <MailPlus className="h-4 w-4" />
-              {creatingMailbox ? "创建中..." : "创建邮箱"}
+              {creatingMailbox ? "创建中…" : "创建邮箱"}
             </Button>
 
             <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-              <button type="button" onClick={handleGenerateRandomPrefix} className="inline-flex items-center gap-1 hover:text-foreground">
+              <button
+                type="button"
+                onClick={handleGenerateRandomPrefix}
+                className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
                 <RefreshCw className="h-3.5 w-3.5" />
                 随机前缀
               </button>
@@ -1809,7 +1943,7 @@ export function TempEmailManager() {
               <p className="text-xs text-destructive">当前域名要求邮箱前缀至少 {selectedMinLocalPartLength} 个字符。</p>
             )}
             {loadingDomains ? (
-              <p className="text-xs text-muted-foreground">正在载入可用邮箱域名...</p>
+              <p className="text-xs text-muted-foreground">正在载入可用邮箱域名…</p>
             ) : domainsError ? (
               <div className="flex flex-wrap items-center gap-2 text-xs text-destructive">
                 <span>{domainsError}</span>
@@ -1839,7 +1973,7 @@ export function TempEmailManager() {
 
           <div className="min-h-0 flex-1 overflow-auto p-3">
             {loadingMailboxes ? (
-              <div className="flex h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 text-sm text-muted-foreground">正在加载...</div>
+              <div className="flex h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 text-sm text-muted-foreground">正在加载…</div>
             ) : mailboxesError ? (
               <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-destructive/5 px-4 text-center text-sm text-destructive">
                 <p>{mailboxesError}</p>
@@ -1867,11 +2001,11 @@ export function TempEmailManager() {
                         type="button"
                         onClick={() => {
                           if (mailbox.id !== selectedMailboxId) {
-                            setMessagePage(1)
+                            handleMessagePageChange(1)
                           }
                           updateSelectedMailboxId(mailbox.id)
                         }}
-                        className="min-w-0 flex-1 text-left outline-none"
+                        className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                       >
                         <p className={`break-all font-mono text-sm ${mailbox.id === selectedMailboxId ? "font-semibold text-primary" : "text-foreground"}`}>
                           {mailbox.emailAddress}
@@ -1906,7 +2040,7 @@ export function TempEmailManager() {
               totalPages={mailboxTotalPages}
               totalItems={mailboxTotalItems}
               loading={loadingMailboxes}
-              onPageChange={setMailboxPage}
+              onPageChange={handleMailboxPageChange}
             />
           )}
         </div>
@@ -1953,7 +2087,7 @@ export function TempEmailManager() {
               {hasMailboxList ? "从邮箱列表中选择一个地址。" : "创建邮箱后，这里会显示收件箱。"}
             </div>
           ) : loadingMessages ? (
-            <div className="flex h-full min-h-80 items-center justify-center text-sm text-muted-foreground">正在同步邮件...</div>
+            <div className="flex h-full min-h-80 items-center justify-center text-sm text-muted-foreground">正在同步邮件…</div>
           ) : messagesError ? (
             <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-destructive">
               <p>{messagesError}</p>
@@ -1976,7 +2110,7 @@ export function TempEmailManager() {
                   key={message.id}
                   type="button"
                   onClick={() => handleOpenMessage(message)}
-                  className={`group w-full px-5 py-4 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 ${
+                  className={`group w-full px-5 py-4 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                     isSelectedMessage(message, selectedMessage) ? "bg-primary/[0.05] ring-1 ring-inset ring-primary/40" : ""
                   }`}
                 >
@@ -2038,7 +2172,7 @@ export function TempEmailManager() {
             totalPages={messageTotalPages}
             totalItems={messageTotalItems}
             loading={loadingMessages}
-            onPageChange={setMessagePage}
+            onPageChange={handleMessagePageChange}
           />
         )}
       </section>
@@ -2283,7 +2417,7 @@ export function TempEmailManager() {
               onClick={() => pendingDeleteMailbox && handleDeleteMailbox(pendingDeleteMailbox)}
               disabled={!!deletingMailboxId}
             >
-              {deletingMailboxId === pendingDeleteMailbox?.id ? "删除中..." : "删除邮箱"}
+              {deletingMailboxId === pendingDeleteMailbox?.id ? "删除中…" : "删除邮箱"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2311,7 +2445,7 @@ export function TempEmailManager() {
               onClick={() => pendingDeleteMessage && handleDeleteMessage(pendingDeleteMessage.id)}
               disabled={!!mutatingMessageId}
             >
-              {mutatingMessageId === pendingDeleteMessage?.id ? "删除中..." : "删除邮件"}
+              {mutatingMessageId === pendingDeleteMessage?.id ? "删除中…" : "删除邮件"}
             </Button>
           </DialogFooter>
         </DialogContent>

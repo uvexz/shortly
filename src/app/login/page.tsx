@@ -74,7 +74,7 @@ export default async function LoginPage() {
               还没有账户？{" "}
               <Link
                 href="/register"
-                className="font-bold text-foreground underline-offset-4 hover:underline transition-all"
+                className="font-bold text-foreground underline-offset-4 transition-colors hover:underline"
               >
                 立即免费注册
               </Link>
@@ -84,7 +84,12 @@ export default async function LoginPage() {
                 返回首页
               </Link>
               <div className="h-1 w-1 rounded-full bg-border" />
-              <Link href="#" className="text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground">
+              <Link
+                href="https://github.com/uvexz/shortly/issues"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+              >
                 遇到问题？
               </Link>
             </div>

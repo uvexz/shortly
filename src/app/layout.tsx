@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import localFont from "next/font/local"
 import "./globals.css"
 import { Providers } from "@/components/providers"
@@ -25,6 +25,10 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
+export const viewport: Viewport = {
+  themeColor: "#ffffff",
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -33,7 +37,15 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <Providers>{children}</Providers>
+        <a
+          href="#main-content"
+          className="sr-only fixed left-4 top-4 z-[100] rounded-md bg-background px-3 py-2 text-sm font-medium text-foreground shadow-sm ring-1 ring-border focus:not-sr-only"
+        >
+          跳至主要内容
+        </a>
+        <Providers>
+          <div id="main-content">{children}</div>
+        </Providers>
       </body>
     </html>
   )
