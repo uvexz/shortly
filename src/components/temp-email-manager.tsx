@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -22,10 +22,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { formatDate } from "@/lib/utils"
+import { cn, formatDate } from "@/lib/utils"
 import { useMediaQuery } from "@/lib/use-media-query"
 import { generateRandomEmailPrefix } from "@/lib/random-email-prefix"
-import { Copy, Inbox, MailPlus, RefreshCw, Trash2 } from "lucide-react"
+import { Activity, AlertTriangle, CheckCircle2, Clock3, Copy, Inbox, MailPlus, RefreshCw, Trash2 } from "lucide-react"
 
 interface MailboxRecord {
   id: string
@@ -254,6 +254,46 @@ function PaginationFooter({
           下一页
         </Button>
       </div>
+    </div>
+  )
+}
+
+type TempEmailMetricTone = "neutral" | "good" | "warning" | "danger"
+
+function TempEmailMetric({
+  label,
+  value,
+  description,
+  icon: Icon,
+  tone = "neutral",
+}: {
+  label: string
+  value: string | number
+  description: string
+  icon: ComponentType<{ className?: string }>
+  tone?: TempEmailMetricTone
+}) {
+  const toneClassName =
+    tone === "good"
+      ? "bg-emerald-50 text-emerald-700 ring-emerald-200/70"
+      : tone === "warning"
+        ? "bg-amber-50 text-amber-700 ring-amber-200/70"
+        : tone === "danger"
+          ? "bg-destructive/5 text-destructive ring-destructive/20"
+          : "bg-muted/50 text-muted-foreground ring-border/70"
+
+  return (
+    <div className="min-w-0 border-b p-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          <p className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
+        </div>
+        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-md ring-1", toneClassName)}>
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+      <p className="mt-3 truncate text-xs text-muted-foreground">{description}</p>
     </div>
   )
 }
@@ -1453,6 +1493,15 @@ export function TempEmailManager() {
   const selectedDetailTab = getMessageDetailSelectedTab(messageDetail, messageDetailTab)
   const hasSelectedMessage = getMessageDialogOpen(selectedMessage)
   const messageDialogOpen = hasSelectedMessage && !isDesktop
+  const visibleUnreadMessages = messages.filter((message) => !message.isRead).length
+  const mailboxStatusDescription = selectedMailbox
+    ? `${selectedMailbox.messageCount} 封 / ${selectedMailbox.unreadCount} 未读`
+    : hasMailboxList
+      ? "从左侧队列选择"
+      : "先创建收件箱"
+  const domainMetricLabel = loadingDomains ? "同步中" : domainsError ? "异常" : emailDomains.length
+  const domainMetricTone: TempEmailMetricTone = domainsError ? "danger" : emailDomains.length > 0 ? "good" : "neutral"
+  const messageMetricTone: TempEmailMetricTone = visibleUnreadMessages > 0 ? "warning" : selectedMailbox ? "good" : "neutral"
 
   useEffect(() => {
     if (!selectedMailboxId) {
@@ -1880,7 +1929,60 @@ export function TempEmailManager() {
   }
 
   const tempEmailWorkspace = (
-    <div className="grid min-h-[calc(100vh-8rem)] overflow-hidden rounded-xl border bg-card lg:grid-cols-[22rem_minmax(22rem,0.9fr)_minmax(30rem,1.25fr)]">
+    <div className="space-y-5">
+      <section className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Inbox operations</p>
+            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">临时邮箱工作台</h2>
+            <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+              创建一次性收件箱，快速检查未读消息，并在右侧保留邮件正文、附件和源码上下文。
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchMailboxes(mailboxPage)}
+            disabled={loadingMailboxes}
+            className="w-full sm:w-auto"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", loadingMailboxes && "animate-spin")} />
+            刷新收件箱
+          </Button>
+        </div>
+        <div className="grid sm:grid-cols-2 xl:grid-cols-4">
+          <TempEmailMetric
+            label="邮箱总数"
+            value={mailboxTotalItems}
+            description={loadingMailboxes ? "正在同步邮箱列表" : `${mailboxes.length} 个显示在当前页`}
+            icon={Inbox}
+          />
+          <TempEmailMetric
+            label="当前收件箱"
+            value={selectedMailbox ? selectedMailbox.emailAddress : "未选择"}
+            description={mailboxStatusDescription}
+            icon={Clock3}
+            tone={selectedMailbox ? "good" : "neutral"}
+          />
+          <TempEmailMetric
+            label="消息队列"
+            value={selectedMailbox ? messageTotalItems : 0}
+            description={selectedMailbox ? `${visibleUnreadMessages} 封未读显示中` : "选择邮箱后同步消息"}
+            icon={Activity}
+            tone={messageMetricTone}
+          />
+          <TempEmailMetric
+            label="可用域名"
+            value={domainMetricLabel}
+            description={domainsError || (loadingDomains ? "正在加载域名" : selectedDomain || "暂无域名")}
+            icon={domainsError ? AlertTriangle : CheckCircle2}
+            tone={domainMetricTone}
+          />
+        </div>
+      </section>
+
+      <div className="grid min-h-[calc(100vh-18rem)] overflow-hidden rounded-xl border bg-card lg:grid-cols-[22rem_minmax(22rem,0.9fr)_minmax(30rem,1.25fr)]">
       <section className="flex min-h-0 flex-col border-b lg:border-b-0 lg:border-r">
         <div className="border-b p-5">
           <div className="space-y-1">
@@ -2180,6 +2282,7 @@ export function TempEmailManager() {
       <section className="hidden min-h-0 flex-col lg:flex">
         {renderDesktopMessageDetailPanel()}
       </section>
+      </div>
     </div>
   )
 

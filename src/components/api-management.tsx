@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   createClientErrorReporter,
@@ -8,7 +8,7 @@ import {
   getUserFacingErrorMessage,
   readOptionalJson,
 } from "@/lib/client-feedback"
-import { formatDate } from "@/lib/utils"
+import { cn, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -62,6 +62,44 @@ const apiTabs = new Set(["keys", "docs", "bitwarden", "sharex"])
 
 function normalizeApiTab(value: string | null) {
   return value && apiTabs.has(value) ? value : "keys"
+}
+
+type ApiMetricTone = "neutral" | "good" | "warning"
+
+function ApiConsoleMetric({
+  label,
+  value,
+  description,
+  icon: Icon,
+  tone = "neutral",
+}: {
+  label: string
+  value: string | number
+  description: string
+  icon: ComponentType<{ className?: string }>
+  tone?: ApiMetricTone
+}) {
+  const toneClassName =
+    tone === "good"
+      ? "bg-emerald-50 text-emerald-700 ring-emerald-200/70"
+      : tone === "warning"
+        ? "bg-amber-50 text-amber-700 ring-amber-200/70"
+        : "bg-muted/50 text-muted-foreground ring-border/70"
+
+  return (
+    <div className="min-w-0 border-b p-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          <p className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
+        </div>
+        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-md ring-1", toneClassName)}>
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+      <p className="mt-3 truncate text-xs text-muted-foreground">{description}</p>
+    </div>
+  )
 }
 
 export function ApiManagementPanel() {
@@ -290,10 +328,60 @@ export function ApiManagementPanel() {
     URL.revokeObjectURL(url)
   }
 
+  const latestKeyDescription = latestPlainKey ? "新密钥只在本次显示" : "创建后立即复制保存"
+  const telegramStatus = telegramBotHandle ? telegramBotHandle : "未配置"
+
   return (
     <>
-    <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6 sm:space-y-8">
-      <TabsList>
+    <div className="space-y-5">
+      <section className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Integration console</p>
+            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">API 集成控制台</h2>
+            <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+              管理外部访问密钥，检查可用域名，并复制 ShareX、Bitwarden 和 OpenAPI 接入配置。
+            </p>
+          </div>
+          <Badge variant="outline" className="h-7 w-fit gap-1.5 px-2.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <ShieldCheck className="h-3 w-3" />
+            API v1
+          </Badge>
+        </div>
+        <div className="grid sm:grid-cols-2 xl:grid-cols-4">
+          <ApiConsoleMetric
+            label="活跃密钥"
+            value={loading ? "同步中" : keys.length}
+            description={latestKeyDescription}
+            icon={KeyRound}
+            tone={keys.length > 0 ? "good" : "neutral"}
+          />
+          <ApiConsoleMetric
+            label="短链域名"
+            value={shortDomains.length}
+            description={shortDomains[0] || "等待域名配置"}
+            icon={ShieldCheck}
+            tone={shortDomains.length > 0 ? "good" : "neutral"}
+          />
+          <ApiConsoleMetric
+            label="邮箱域名"
+            value={emailDomains.length}
+            description={sampleEmailDomain}
+            icon={MailPlus}
+            tone={emailDomains.length > 0 ? "good" : "neutral"}
+          />
+          <ApiConsoleMetric
+            label="Telegram"
+            value={telegramBotHandle ? "可绑定" : "未启用"}
+            description={telegramStatus}
+            icon={Download}
+            tone={telegramBotHandle ? "good" : "warning"}
+          />
+        </div>
+      </section>
+
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="rounded-xl border bg-card p-4 sm:p-5">
+      <TabsList className="w-full justify-start overflow-x-auto">
         <TabsTrigger value="keys">API Key</TabsTrigger>
         <TabsTrigger value="docs">接口示例</TabsTrigger>
         <TabsTrigger value="bitwarden">Bitwarden</TabsTrigger>
@@ -619,7 +707,8 @@ export function ApiManagementPanel() {
           </div>
         </div>
       </TabsContent>
-    </Tabs>
+      </Tabs>
+    </div>
 
       <Dialog open={!!pendingDeleteKey} onOpenChange={(open) => !open && setPendingDeleteKey(null)}>
         <DialogContent className="w-[calc(100vw-2rem)] max-w-md">

@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { formatDate } from "@/lib/utils"
 import { toast } from "sonner"
-import { KeyRound, Plus, Trash2, Loader2, MonitorSmartphone, Copy } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Copy, KeyRound, Loader2, MonitorSmartphone, Plus, ShieldCheck, Trash2 } from "lucide-react"
 
 const passkeyReporter = createClientErrorReporter("passkey")
 const passkeyNameDateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -133,42 +133,131 @@ export function PasskeyManager() {
     }
   }
 
-  return (
-    <div className="grid gap-6 xl:grid-cols-[22rem_minmax(0,1fr)] 2xl:grid-cols-[24rem_minmax(0,1fr)]">
-      <div className="space-y-4 px-1">
-        <div className="flex items-center gap-2">
-          <KeyRound className="h-4 w-4 text-primary" />
-          <h2 className="text-lg font-semibold tracking-tight">通行密钥</h2>
-        </div>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          通行密钥（Passkeys）是一种更安全、更便捷的登录方式。你可以使用指纹、面容或设备密码来替代传统的账号密码。
-        </p>
-        {supportsPasskey && (
-          <div className="pt-2">
-            <Button onClick={handleAddPasskey} disabled={loadingAdd || isPending} className="h-10 w-full sm:w-auto px-6 font-bold">
-              {loadingAdd ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="mr-2 h-4 w-4" />
-              )}
-              添加新密钥
-            </Button>
-          </div>
-        )}
-      </div>
+  const passkeyCount = passkeys?.length ?? 0
+  const backedUpCount = passkeys?.filter((pk: { backedUp: boolean }) => pk.backedUp).length ?? 0
+  const securityState = !supportsPasskey
+    ? "当前设备不支持"
+    : isPending
+      ? "正在同步"
+      : passkeyCount > 0
+        ? "已启用"
+        : "建议启用"
 
-      <div className="space-y-6">
-        {!supportsPasskey ? (
-          <div className="flex h-32 items-center justify-center rounded-xl border border-dashed bg-muted/5 text-sm text-muted-foreground">
+  return (
+    <div className="space-y-5">
+      <section className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Credential control</p>
+            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">安全凭证控制台</h2>
+            <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+              查看当前设备是否支持通行密钥，管理已注册凭证，并确认哪些密钥已完成云端备份。
+            </p>
+          </div>
+          {supportsPasskey && (
+            <Button onClick={handleAddPasskey} disabled={loadingAdd || isPending} className="h-10 w-full px-5 sm:w-auto">
+              {loadingAdd ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              添加通行密钥
+            </Button>
+          )}
+        </div>
+        <div className="grid sm:grid-cols-3">
+          <div className="min-w-0 border-b p-4 sm:border-b-0 sm:border-r">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-muted-foreground">安全状态</p>
+                <p className="mt-2 truncate text-2xl font-semibold tracking-tight">{securityState}</p>
+              </div>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground ring-1 ring-border/70">
+                {supportsPasskey ? <ShieldCheck className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+              </span>
+            </div>
+            <p className="mt-3 truncate text-xs text-muted-foreground">
+              {supportsPasskey ? "可使用设备验证登录" : "需要 HTTPS 与兼容浏览器"}
+            </p>
+          </div>
+          <div className="min-w-0 border-b p-4 sm:border-b-0 sm:border-r">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-muted-foreground">已注册密钥</p>
+                <p className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums">
+                  {isPending ? "同步中" : passkeyCount}
+                </p>
+              </div>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/70">
+                <KeyRound className="h-4 w-4" />
+              </span>
+            </div>
+            <p className="mt-3 truncate text-xs text-muted-foreground">至少保留一枚常用设备密钥</p>
+          </div>
+          <div className="min-w-0 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-muted-foreground">备份覆盖</p>
+                <p className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums">
+                  {isPending ? "同步中" : backedUpCount}
+                </p>
+              </div>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground ring-1 ring-border/70">
+                <CheckCircle2 className="h-4 w-4" />
+              </span>
+            </div>
+            <p className="mt-3 truncate text-xs text-muted-foreground">显示已由平台标记备份的凭证</p>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-5 xl:grid-cols-[22rem_minmax(0,1fr)] 2xl:grid-cols-[24rem_minmax(0,1fr)]">
+        <aside className="rounded-xl border bg-card p-5">
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-primary" />
+            <h3 className="text-base font-semibold tracking-tight">登录保护</h3>
+          </div>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            通行密钥使用指纹、面容或设备密码完成登录。添加后，完整凭证仍保存在你的设备或平台账户中。
+          </p>
+          <div className="mt-5 space-y-3 rounded-lg border bg-muted/15 p-4 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">浏览器支持</span>
+              <Badge variant={supportsPasskey ? "secondary" : "outline"}>
+                {supportsPasskey ? "可用" : "不可用"}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">列表同步</span>
+              <Badge variant={isPending ? "outline" : "secondary"}>{isPending ? "同步中" : "完成"}</Badge>
+            </div>
+          </div>
+        </aside>
+
+        <section className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-base font-semibold tracking-tight">凭证账本</h3>
+              <p className="mt-1 text-xs text-muted-foreground">复制 credential ID 或移除不再使用的设备。</p>
+            </div>
+            {!isPending && passkeyCount > 0 && (
+              <Badge variant="outline" className="shrink-0 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                {passkeyCount} keys
+              </Badge>
+            )}
+          </div>
+
+          {!supportsPasskey ? (
+          <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 px-6 text-center text-sm text-muted-foreground">
             当前浏览器或设备环境暂不支持通行密钥。
           </div>
         ) : isPending ? (
-          <div className="flex h-32 items-center justify-center rounded-xl border border-dashed bg-muted/5 text-sm text-muted-foreground">
+          <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 text-sm text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
             正在载入密钥列表…
           </div>
         ) : !passkeys?.length ? (
-          <div className="flex h-32 items-center justify-center rounded-xl border border-dashed bg-muted/5 p-6 text-center text-sm text-muted-foreground">
+          <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 p-6 text-center text-sm text-muted-foreground">
             你还没有添加任何通行密钥。为了账户安全，建议优先使用此登录方式。
           </div>
         ) : (
@@ -234,6 +323,7 @@ export function PasskeyManager() {
             ))}
           </div>
         )}
+        </section>
       </div>
 
       <Dialog open={!!pendingDeletePasskey} onOpenChange={(open) => !open && setPendingDeletePasskey(null)}>
