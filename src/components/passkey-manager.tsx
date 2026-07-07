@@ -4,7 +4,6 @@ import { useState } from "react"
 import { authClient } from "@/lib/auth-client"
 import { createClientErrorReporter, getUserFacingErrorMessage } from "@/lib/client-feedback"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
@@ -13,9 +12,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { formatDate } from "@/lib/utils"
+import { cn, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { AlertTriangle, CheckCircle2, Copy, KeyRound, Loader2, MonitorSmartphone, Plus, ShieldCheck, Trash2 } from "lucide-react"
+import {
+  ConsoleKicker,
+  ConsoleMetric,
+  ConsoleStatusBadge,
+  consoleInsetClassName,
+  consoleSurfaceClassName,
+} from "@/components/dashboard/console-ui"
 
 const passkeyReporter = createClientErrorReporter("passkey")
 const passkeyNameDateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -145,11 +151,11 @@ export function PasskeyManager() {
 
   return (
     <div className="space-y-5">
-      <section className="overflow-hidden rounded-xl border bg-card">
-        <div className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-end sm:justify-between">
+      <section className={cn(consoleSurfaceClassName, "overflow-hidden")}>
+        <div className="flex flex-col gap-4 p-5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0 space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Credential control</p>
-            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">安全凭证控制台</h2>
+            <ConsoleKicker>Credential control</ConsoleKicker>
+            <h2 className="text-xl font-semibold sm:text-2xl">安全凭证控制台</h2>
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
               查看当前设备是否支持通行密钥，管理已注册凭证，并确认哪些密钥已完成云端备份。
             </p>
@@ -165,85 +171,60 @@ export function PasskeyManager() {
             </Button>
           )}
         </div>
-        <div className="grid sm:grid-cols-3">
-          <div className="min-w-0 border-b p-4 sm:border-b-0 sm:border-r">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-muted-foreground">安全状态</p>
-                <p className="mt-2 truncate text-2xl font-semibold tracking-tight">{securityState}</p>
-              </div>
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground ring-1 ring-border/70">
-                {supportsPasskey ? <ShieldCheck className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-              </span>
-            </div>
-            <p className="mt-3 truncate text-xs text-muted-foreground">
-              {supportsPasskey ? "可使用设备验证登录" : "需要 HTTPS 与兼容浏览器"}
-            </p>
-          </div>
-          <div className="min-w-0 border-b p-4 sm:border-b-0 sm:border-r">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-muted-foreground">已注册密钥</p>
-                <p className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums">
-                  {isPending ? "同步中" : passkeyCount}
-                </p>
-              </div>
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/70">
-                <KeyRound className="h-4 w-4" />
-              </span>
-            </div>
-            <p className="mt-3 truncate text-xs text-muted-foreground">至少保留一枚常用设备密钥</p>
-          </div>
-          <div className="min-w-0 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-muted-foreground">备份覆盖</p>
-                <p className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums">
-                  {isPending ? "同步中" : backedUpCount}
-                </p>
-              </div>
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground ring-1 ring-border/70">
-                <CheckCircle2 className="h-4 w-4" />
-              </span>
-            </div>
-            <p className="mt-3 truncate text-xs text-muted-foreground">显示已由平台标记备份的凭证</p>
-          </div>
+        <div className="grid gap-3 p-4 sm:grid-cols-3 sm:p-5">
+          <ConsoleMetric
+            label="安全状态"
+            value={securityState}
+            description={supportsPasskey ? "可使用设备验证登录" : "需要 HTTPS 与兼容浏览器"}
+            icon={supportsPasskey ? ShieldCheck : AlertTriangle}
+            tone={!supportsPasskey ? "warning" : passkeyCount > 0 ? "good" : "neutral"}
+          />
+          <ConsoleMetric
+            label="已注册密钥"
+            value={isPending ? "同步中" : passkeyCount}
+            description="至少保留一枚常用设备密钥"
+            icon={KeyRound}
+            tone={passkeyCount > 0 ? "good" : "neutral"}
+          />
+          <ConsoleMetric
+            label="备份覆盖"
+            value={isPending ? "同步中" : backedUpCount}
+            description="显示已由平台标记备份的凭证"
+            icon={CheckCircle2}
+            tone={backedUpCount > 0 ? "good" : "neutral"}
+          />
         </div>
       </section>
 
       <div className="grid gap-5 xl:grid-cols-[22rem_minmax(0,1fr)] 2xl:grid-cols-[24rem_minmax(0,1fr)]">
-        <aside className="rounded-xl border bg-card p-5">
+        <aside className={cn(consoleSurfaceClassName, "p-5")}>
           <div className="flex items-center gap-2">
-            <KeyRound className="h-4 w-4 text-primary" />
-            <h3 className="text-base font-semibold tracking-tight">登录保护</h3>
+            <KeyRound className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-base font-semibold">登录保护</h3>
           </div>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             通行密钥使用指纹、面容或设备密码完成登录。添加后，完整凭证仍保存在你的设备或平台账户中。
           </p>
-          <div className="mt-5 space-y-3 rounded-lg border bg-muted/15 p-4 text-sm">
+          <div className={cn(consoleInsetClassName, "mt-5 space-y-3 p-4 text-sm")}>
             <div className="flex items-center justify-between gap-3">
               <span className="text-muted-foreground">浏览器支持</span>
-              <Badge variant={supportsPasskey ? "secondary" : "outline"}>
-                {supportsPasskey ? "可用" : "不可用"}
-              </Badge>
+              <ConsoleStatusBadge label={supportsPasskey ? "可用" : "不可用"} tone={supportsPasskey ? "good" : "warning"} />
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-muted-foreground">列表同步</span>
-              <Badge variant={isPending ? "outline" : "secondary"}>{isPending ? "同步中" : "完成"}</Badge>
+              <ConsoleStatusBadge label={isPending ? "同步中" : "完成"} tone={isPending ? "neutral" : "good"} />
             </div>
           </div>
         </aside>
 
-        <section className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
+        <section className={cn(consoleSurfaceClassName, "space-y-4 p-4 sm:p-5")}>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="text-base font-semibold tracking-tight">凭证账本</h3>
+              <h3 className="text-base font-semibold">凭证账本</h3>
               <p className="mt-1 text-xs text-muted-foreground">复制 credential ID 或移除不再使用的设备。</p>
             </div>
             {!isPending && passkeyCount > 0 && (
-              <Badge variant="outline" className="shrink-0 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                {passkeyCount} keys
-              </Badge>
+              <ConsoleStatusBadge label={`${passkeyCount} keys`} tone="accent" className="shrink-0" />
             )}
           </div>
 
@@ -253,7 +234,7 @@ export function PasskeyManager() {
           </div>
         ) : isPending ? (
           <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 text-sm text-muted-foreground">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
+            <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#0072F5]" />
             正在载入密钥列表…
           </div>
         ) : !passkeys?.length ? (
@@ -263,29 +244,27 @@ export function PasskeyManager() {
         ) : (
           <div className="grid gap-3">
             {passkeys.map((pk: { id: string; name?: string; backedUp: boolean; credentialID: string; createdAt: Date }) => (
-              <div key={pk.id} className="group relative rounded-xl border bg-card p-4 transition-colors hover:border-primary/20 sm:p-5">
+              <div key={pk.id} className={cn(consoleInsetClassName, "group relative bg-background p-4 transition-colors hover:bg-muted/[0.16] sm:p-5")}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1 space-y-3">
                     <div className="flex items-start gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/5">
-                        <MonitorSmartphone className="h-4 w-4 text-primary/70" />
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted/40 shadow-[0_0_0_1px_rgba(0,0,0,0.08)]">
+                        <MonitorSmartphone className="h-4 w-4 text-muted-foreground" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="truncate text-sm font-bold">{pk.name || "未命名设备"}</span>
+                          <span className="truncate text-sm font-medium">{pk.name || "未命名设备"}</span>
                           {pk.backedUp && (
-                            <Badge variant="outline" className="h-4 border-primary/20 bg-primary/5 text-[10px] font-bold text-primary px-1.5 uppercase">
-                              BACKED UP
-                            </Badge>
+                            <ConsoleStatusBadge label="已备份" tone="good" />
                           )}
                         </div>
-                        <p className="mt-0.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                          ADDED ON {pk.createdAt ? formatDate(pk.createdAt) : "UNKNOWN"}
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          添加于 {pk.createdAt ? formatDate(pk.createdAt) : "未知"}
                         </p>
                       </div>
                     </div>
                     
-                    <div className="flex items-center gap-2 rounded-lg bg-black/[0.02] border p-2.5">
+                    <div className={cn(consoleInsetClassName, "flex items-center gap-2 bg-muted/[0.14] p-2.5")}>
                       <code className="min-w-0 flex-1 break-all font-mono text-[10px] text-muted-foreground/80 leading-relaxed">
                         {pk.credentialID}
                       </code>

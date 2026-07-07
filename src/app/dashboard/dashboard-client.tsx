@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, type ComponentType, type ReactNode } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { UserMenu } from "@/components/user-menu"
 import { ShortLinkCreator } from "@/components/short-link-creator"
@@ -73,6 +73,14 @@ import Link from "next/link"
 import { PasskeyManager } from "@/components/passkey-manager"
 import { ApiManagementPanel } from "@/components/api-management"
 import { useMediaQuery } from "@/lib/use-media-query"
+import {
+  ConsoleKicker,
+  ConsoleMetric,
+  ConsoleStatusBadge,
+  consoleInsetClassName,
+  consoleSurfaceClassName,
+  type ConsoleTone,
+} from "@/components/dashboard/console-ui"
 
 interface ShortLink {
   id: string
@@ -144,8 +152,6 @@ const tabMeta = {
 } as const
 
 type DashboardTab = keyof typeof tabMeta
-type LucideIcon = ComponentType<{ className?: string }>
-
 function getDashboardTab(value: string | null | undefined) {
   return value && dashboardTabs.has(value) ? (value as DashboardTab) : "links"
 }
@@ -196,8 +202,7 @@ function getLinkHealth(link: ShortLink, referenceTime: number | null) {
   if (link.isExpired) {
     return {
       label: link.expiredByClicks ? "点击封顶" : link.expiredByDate ? "已过期" : "已失效",
-      className: "border-destructive/30 bg-destructive/5 text-destructive",
-      dotClassName: "bg-destructive",
+      tone: "danger" as ConsoleTone,
     }
   }
 
@@ -205,62 +210,28 @@ function getLinkHealth(link: ShortLink, referenceTime: number | null) {
   if (expiresAt && referenceTime && expiresAt.getTime() - referenceTime <= EXPIRING_SOON_MS) {
     return {
       label: "即将到期",
-      className: "border-amber-300/70 bg-amber-50 text-amber-700",
-      dotClassName: "bg-amber-500",
+      tone: "warning" as ConsoleTone,
     }
   }
 
   if (link.hasClickLimit || link.hasExpiration) {
     return {
       label: "有规则",
-      className: "border-emerald-300/70 bg-emerald-50 text-emerald-700",
-      dotClassName: "bg-emerald-500",
+      tone: "good" as ConsoleTone,
     }
   }
 
   return {
     label: "有效",
-    className: "border-primary/15 bg-primary/[0.04] text-primary",
-    dotClassName: "bg-primary",
+    tone: "accent" as ConsoleTone,
   }
 }
 
-function DashboardMetric({
-  label,
-  value,
-  description,
-  icon: Icon,
-  tone = "neutral",
-}: {
-  label: string
-  value: ReactNode
-  description: string
-  icon: LucideIcon
-  tone?: "neutral" | "good" | "warning" | "danger"
-}) {
-  const toneClassName =
-    tone === "good"
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-200/70"
-      : tone === "warning"
-        ? "bg-amber-50 text-amber-700 ring-amber-200/70"
-        : tone === "danger"
-          ? "bg-destructive/5 text-destructive ring-destructive/20"
-          : "bg-muted/50 text-muted-foreground ring-border/70"
-
-  return (
-    <div className="min-w-0 rounded-lg border bg-card p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          <div className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
-        </div>
-        <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-md ring-1", toneClassName)}>
-          <Icon className="h-4 w-4" />
-        </div>
-      </div>
-      <p className="mt-3 truncate text-xs text-muted-foreground">{description}</p>
-    </div>
-  )
+function getLogEventTone(eventType: string): ConsoleTone {
+  if (eventType === "click") return "good"
+  if (eventType === "blocked") return "danger"
+  if (eventType.includes("expire")) return "warning"
+  return "neutral"
 }
 
 export function DashboardClient({ user, initialTab }: DashboardClientProps) {
@@ -494,18 +465,15 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
 
   const linksWorkspace = (
     <div className="mx-auto w-full max-w-[110rem] space-y-5">
-      <section className="overflow-hidden rounded-lg border bg-card">
-        <div className="grid gap-5 border-b p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+      <section className={cn(consoleSurfaceClassName, "overflow-hidden")}>
+        <div className="grid gap-5 p-4 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] sm:p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
           <div className="min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="h-6 gap-1.5 px-2 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                <LayoutDashboard className="h-3 w-3" />
-                Workspace
-              </Badge>
+              <ConsoleKicker icon={LayoutDashboard}>Workspace</ConsoleKicker>
               <span className="text-xs text-muted-foreground">当前页 {pageRange}</span>
             </div>
             <div>
-              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">链接运营面板</h2>
+              <h2 className="text-2xl font-semibold sm:text-3xl">链接运营面板</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                 创建入口、链接队列和访问诊断放在同一个工作台里，方便快速判断哪条链接需要复制、检查或回收。
               </p>
@@ -526,27 +494,27 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
         </div>
 
         <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-4">
-          <DashboardMetric
+          <ConsoleMetric
             label="全部短链"
             value={totalItems}
             description={totalItems > 0 ? `当前显示 ${pageRange}` : "尚未创建短链"}
             icon={Link2}
           />
-          <DashboardMetric
+          <ConsoleMetric
             label="当前页点击"
             value={currentPageClicks}
             description="来自当前分页的点击总和"
             icon={MousePointerClick}
             tone={currentPageClicks > 0 ? "good" : "neutral"}
           />
-          <DashboardMetric
+          <ConsoleMetric
             label="有效链接"
             value={`${activeLinks}/${links.length || 0}`}
             description={expiredLinks > 0 ? `${expiredLinks} 条已失效` : "当前页状态正常"}
             icon={CheckCircle2}
             tone={expiredLinks > 0 ? "warning" : "good"}
           />
-          <DashboardMetric
+          <ConsoleMetric
             label="规则保护"
             value={limitedLinks}
             description={expiringSoonLinks > 0 ? `${expiringSoonLinks} 条 7 天内到期` : "点击上限或有效期规则"}
@@ -557,8 +525,8 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
       </section>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(30rem,1.18fr)_minmax(24rem,0.82fr)]">
-        <section className="min-w-0 overflow-hidden rounded-lg border bg-card">
-          <div className="border-b bg-muted/[0.16] p-4 sm:p-5">
+        <section className={cn(consoleSurfaceClassName, "min-w-0 overflow-hidden")}>
+          <div className="bg-muted/[0.16] p-4 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] sm:p-5">
             <ShortLinkCreator
               user={user}
               mode="dashboard"
@@ -570,7 +538,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
           <div className="flex min-h-[36rem] flex-col">
             <div className="flex flex-col gap-3 border-b px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div className="min-w-0">
-                <h3 className="text-base font-semibold tracking-tight">短链队列</h3>
+                <h3 className="text-base font-semibold">短链队列</h3>
                 <p className="mt-1 text-sm text-muted-foreground">按创建时间排列。选择一条链接后，右侧检查器会同步显示访问日志。</p>
               </div>
               <Badge variant="outline" className="w-fit px-2.5 py-1 text-xs font-medium text-muted-foreground">
@@ -629,7 +597,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                           <button
                             type="button"
                             onClick={() => void handleViewLogs(link)}
-                            className="min-w-0 flex-1 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            className="dashboard-focus-ring min-w-0 flex-1 rounded-md text-left"
                           >
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                               <div className="min-w-0 space-y-1.5">
@@ -638,13 +606,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                                 </p>
                                 <p className="line-clamp-1 text-xs text-muted-foreground">{link.originalUrl}</p>
                               </div>
-                              <Badge
-                                variant="outline"
-                                className={cn("h-6 w-fit shrink-0 gap-1.5 px-2 text-[10px] font-medium", health.className)}
-                              >
-                                <span className={cn("h-1.5 w-1.5 rounded-full", health.dotClassName)} />
-                                {health.label}
-                              </Badge>
+                              <ConsoleStatusBadge label={health.label} tone={health.tone} className="w-fit shrink-0" />
                             </div>
                             <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
                               <span className="flex items-center gap-1.5">
@@ -730,11 +692,11 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
           </div>
         </section>
 
-        <aside className="min-w-0 overflow-hidden rounded-lg border bg-card xl:sticky xl:top-[5.25rem] xl:max-h-[calc(100vh-6.5rem)]">
+        <aside className={cn(consoleSurfaceClassName, "min-w-0 overflow-hidden xl:sticky xl:top-[5.25rem] xl:max-h-[calc(100vh-6.5rem)]")}>
           {!selectedLink ? (
             <div className="grid min-h-[34rem] place-items-center px-8 text-center">
               <div className="max-w-sm space-y-4">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg border bg-muted/30">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-muted/30 shadow-[0_0_0_1px_rgba(0,0,0,0.08)]">
                   <PanelRight className="h-5 w-5 text-muted-foreground" />
                 </div>
                 <div className="space-y-1">
@@ -750,7 +712,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
               <div className="space-y-4 border-b p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 space-y-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Inspector</p>
+                    <ConsoleKicker>Inspector</ConsoleKicker>
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <h3 className="break-all font-mono text-xl font-semibold leading-tight">{selectedLink.domain}/{selectedLink.slug}</h3>
                       <Button
@@ -767,10 +729,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                     <p className="text-xs text-muted-foreground">创建于 {formatDate(selectedLink.createdAt)}</p>
                   </div>
                   {selectedLinkHealth && (
-                    <Badge variant="outline" className={cn("h-6 shrink-0 gap-1.5 px-2 text-[10px] font-medium", selectedLinkHealth.className)}>
-                      <span className={cn("h-1.5 w-1.5 rounded-full", selectedLinkHealth.dotClassName)} />
-                      {selectedLinkHealth.label}
-                    </Badge>
+                    <ConsoleStatusBadge label={selectedLinkHealth.label} tone={selectedLinkHealth.tone} className="shrink-0" />
                   )}
                 </div>
 
@@ -805,7 +764,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                 <div className="space-y-6">
                   <section className="space-y-3">
                     <h4 className="text-sm font-semibold">生命周期</h4>
-                    <dl className="grid gap-3 rounded-lg border bg-muted/[0.12] p-4 text-sm sm:grid-cols-2">
+                    <dl className={cn(consoleInsetClassName, "grid gap-3 p-4 text-sm sm:grid-cols-2")}>
                       <div className="min-w-0 sm:col-span-2">
                         <dt className="text-xs text-muted-foreground">目标链接</dt>
                         <dd className="mt-1 break-all text-foreground">{selectedLink.originalUrl}</dd>
@@ -856,15 +815,15 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                       </Button>
                     </div>
                     <div className="grid grid-cols-3 gap-3">
-                      <div className="rounded-lg border bg-background px-3 py-3">
+                      <div className={cn(consoleInsetClassName, "bg-background px-3 py-3")}>
                         <p className="text-xs text-muted-foreground">总点击</p>
                         <p className="mt-1 text-xl font-semibold tabular-nums">{selectedLink.clicks}</p>
                       </div>
-                      <div className="rounded-lg border bg-background px-3 py-3">
+                      <div className={cn(consoleInsetClassName, "bg-background px-3 py-3")}>
                         <p className="text-xs text-muted-foreground">日志</p>
                         <p className="mt-1 text-xl font-semibold tabular-nums">{selectedLinkLogs.length}</p>
                       </div>
-                      <div className="rounded-lg border bg-background px-3 py-3">
+                      <div className={cn(consoleInsetClassName, "bg-background px-3 py-3")}>
                         <p className="text-xs text-muted-foreground">拦截</p>
                         <p className="mt-1 text-xl font-semibold tabular-nums">{selectedLinkBlockedEvents}</p>
                       </div>
@@ -902,9 +861,11 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                                 <p className="truncate text-xs font-medium">{formatDate(log.createdAt)}</p>
                                 <p className="mt-1 truncate text-xs text-muted-foreground">{log.referrer || "直接访问"} · {log.ipAddress || "未知 IP"}</p>
                               </div>
-                              <Badge variant="outline" className="h-6 self-center text-[10px]">
-                                {getLogEventLabel(log.eventType)}
-                              </Badge>
+                              <ConsoleStatusBadge
+                                label={getLogEventLabel(log.eventType)}
+                                tone={getLogEventTone(log.eventType)}
+                                className="self-center"
+                              />
                               <span className="self-center font-mono text-xs text-muted-foreground">{log.statusCode ?? "—"}</span>
                             </div>
                           ))}
@@ -993,7 +954,7 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
           </SidebarContent>
           <SidebarSeparator />
           <SidebarFooter className="p-3">
-            <div className="rounded-xl border bg-sidebar-accent/30 p-2">
+            <div className={cn(consoleInsetClassName, "bg-sidebar-accent/30 p-2")}>
               <UserMenu
                 user={user}
                 layout="panel"
@@ -1005,22 +966,19 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
           <SidebarRail />
         </Sidebar>
         <SidebarInset>
-          <header className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur-xl">
+          <header className="sticky top-0 z-20 bg-background/90 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] backdrop-blur-xl">
             <div className="flex min-h-16 flex-col gap-3 px-[var(--page-gutter)] py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <SidebarTrigger className="-ml-2 h-9 w-9" />
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-card">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-card shadow-[0_0_0_1px_rgba(0,0,0,0.08)]">
                   <CurrentTabIcon className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div className="min-w-0">
-                  <h1 className="truncate text-sm font-semibold tracking-tight text-foreground">{currentTabMeta.title}</h1>
+                  <h1 className="truncate text-sm font-semibold text-foreground">{currentTabMeta.title}</h1>
                   <p className="hidden truncate text-xs text-muted-foreground sm:block">{currentTabMeta.description}</p>
                 </div>
               </div>
-              <Badge variant="outline" className="hidden h-7 gap-1.5 px-2.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground sm:flex">
-                <Activity className="h-3 w-3" />
-                Dashboard
-              </Badge>
+              <ConsoleKicker icon={Activity} className="hidden sm:flex">Dashboard</ConsoleKicker>
             </div>
           </header>
 
@@ -1051,13 +1009,13 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
       </SidebarProvider>
 
       <Dialog open={logsDialogOpen} onOpenChange={setLogsDialogOpen}>
-        <DialogContent className="flex max-h-[min(92vh,44rem)] w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border p-0 shadow-none sm:max-w-4xl">
+        <DialogContent className={cn(consoleSurfaceClassName, "flex max-h-[min(92vh,44rem)] w-[calc(100vw-1.5rem)] flex-col overflow-hidden border-0 p-0 sm:max-w-4xl")}>
           <DialogHeader className="p-5 pb-4 sm:p-6 sm:pb-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <DialogTitle className="text-xl font-bold tracking-tight">点击日志诊断</DialogTitle>
-                <DialogDescription className="mt-1.5 text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
-                  REAL-TIME TRAFFIC ANALYSIS
+                <DialogTitle className="text-xl font-semibold">点击日志诊断</DialogTitle>
+                <DialogDescription className="mt-1.5 text-sm text-muted-foreground">
+                  查看这条短链的最近访问、拦截事件和来源信息。
                 </DialogDescription>
               </div>
               <Button 
@@ -1065,16 +1023,16 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                 size="sm" 
                 onClick={handleRefreshLogs} 
                 disabled={logsLoading || !selectedLink}
-                className="h-9 rounded-xl bg-muted/50 font-bold text-[11px] uppercase tracking-wider"
+                className="h-8 bg-muted/50 text-xs font-medium"
               >
                 <RefreshCw className={`mr-2 h-3.5 w-3.5 ${logsLoading ? "animate-spin" : ""}`} />
                 刷新数据
               </Button>
             </div>
             {selectedLink && (
-              <div className="mt-4 flex items-center gap-3 rounded-lg border bg-muted/20 p-3">
-                <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                <code className="font-mono text-xs font-bold text-primary">
+              <div className={cn(consoleInsetClassName, "mt-4 flex items-center gap-3 p-3")}>
+                <div className="h-2 w-2 rounded-full bg-[#0072F5]" />
+                <code className="font-mono text-xs font-medium text-foreground">
                   {selectedLink.domain}/{selectedLink.slug}
                 </code>
               </div>
@@ -1084,32 +1042,32 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
           <div className="flex-1 overflow-auto px-5 pb-5 sm:px-6 sm:pb-6">
             {logsLoading ? (
               <div className="flex h-64 flex-col items-center justify-center space-y-4 text-center">
-                <div className="h-8 w-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-                <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">正在拉取日志…</p>
+                <div className="h-8 w-8 rounded-full border-4 border-muted border-t-[#0072F5] animate-spin" />
+                <p className="text-sm text-muted-foreground">正在拉取日志…</p>
               </div>
             ) : logsError ? (
               <div className="flex h-64 flex-col items-center justify-center space-y-4 text-center">
-                <p className="text-sm font-bold text-destructive uppercase tracking-widest">{logsError}</p>
-                <Button type="button" variant="outline" size="sm" onClick={handleRefreshLogs} className="rounded-xl font-bold">
+                <p className="text-sm text-destructive">{logsError}</p>
+                <Button type="button" variant="outline" size="sm" onClick={handleRefreshLogs}>
                   重试请求
                 </Button>
               </div>
             ) : logs.length === 0 ? (
-              <div className="flex h-64 flex-col items-center justify-center space-y-2 rounded-xl border border-dashed bg-muted/5 text-center text-muted-foreground">
-                <Zap className="h-8 w-8 text-muted-foreground/30 mb-2" />
-                <p className="text-sm font-bold uppercase tracking-widest">暂无记录</p>
+              <div className="flex h-64 flex-col items-center justify-center space-y-2 rounded-lg border border-dashed bg-muted/5 text-center text-muted-foreground">
+                <Zap className="h-8 w-8 mb-2 text-muted-foreground/30" />
+                <p className="text-sm font-medium">暂无记录</p>
                 <p className="text-xs">该链接尚未产生任何点击事件</p>
               </div>
             ) : isDesktop ? (
-              <div className="overflow-hidden rounded-xl border bg-card">
+              <div className={cn(consoleSurfaceClassName, "overflow-hidden")}>
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow className="hover:bg-transparent border-none">
-                      <TableHead className="h-10 text-[10px] font-bold uppercase tracking-wider">时间戳</TableHead>
-                      <TableHead className="h-10 text-[10px] font-bold uppercase tracking-wider">事件类型</TableHead>
-                      <TableHead className="h-10 text-center text-[10px] font-bold uppercase tracking-wider">HTTP</TableHead>
-                      <TableHead className="h-10 text-[10px] font-bold uppercase tracking-wider">来源渠道 (Referrer)</TableHead>
-                      <TableHead className="h-10 text-[10px] font-bold uppercase tracking-wider text-right pr-6">访问信息</TableHead>
+                      <TableHead className="h-10 text-[11px] font-medium">时间</TableHead>
+                      <TableHead className="h-10 text-[11px] font-medium">事件</TableHead>
+                      <TableHead className="h-10 text-center text-[11px] font-medium">HTTP</TableHead>
+                      <TableHead className="h-10 text-[11px] font-medium">来源</TableHead>
+                      <TableHead className="h-10 pr-6 text-right text-[11px] font-medium">访问信息</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1119,17 +1077,9 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                           {formatDate(log.createdAt)}
                         </TableCell>
                         <TableCell className="py-4">
-                          <Badge 
-                            variant="outline" 
-                            className={`rounded-lg border-none px-2 py-0.5 text-[10px] font-bold uppercase ${
-                              log.eventType === "click" ? "bg-emerald-500/10 text-emerald-600" :
-                              log.eventType === "blocked" ? "bg-rose-500/10 text-rose-600" : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {getLogEventLabel(log.eventType)}
-                          </Badge>
+                          <ConsoleStatusBadge label={getLogEventLabel(log.eventType)} tone={getLogEventTone(log.eventType)} />
                         </TableCell>
-                        <TableCell className="text-center py-4 font-mono text-[11px] font-bold text-muted-foreground/60">
+                        <TableCell className="text-center py-4 font-mono text-[11px] font-medium text-muted-foreground">
                           {log.statusCode ?? "—"}
                         </TableCell>
                         <TableCell className="max-w-[200px] py-4">
@@ -1139,8 +1089,8 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
                         </TableCell>
                         <TableCell className="text-right pr-6 py-4">
                           <div className="space-y-0.5">
-                            <p className="text-[11px] font-bold tabular-nums text-foreground/80">{log.ipAddress || "0.0.0.0"}</p>
-                            <p className="truncate text-[9px] font-bold uppercase tracking-tighter text-muted-foreground/40">
+                            <p className="text-[11px] font-medium tabular-nums text-foreground/80">{log.ipAddress || "0.0.0.0"}</p>
+                            <p className="truncate text-[10px] text-muted-foreground/60">
                               {log.userAgent?.split(" ").slice(-1)[0] || "UNKNOWN"}
                             </p>
                           </div>
@@ -1153,24 +1103,22 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
             ) : (
               <div className="space-y-3">
                 {logs.map((log) => (
-                  <div key={log.id} className="space-y-4 rounded-xl border bg-card p-4">
-                    <div className="flex items-center justify-between border-b pb-3">
-                      <Badge variant="outline" className="text-[10px] font-bold uppercase bg-muted/50">
-                        {getLogEventLabel(log.eventType)}
-                      </Badge>
-                      <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{formatDate(log.createdAt)}</span>
+                  <div key={log.id} className={cn(consoleSurfaceClassName, "space-y-4 p-4")}>
+                    <div className="flex items-center justify-between pb-3 shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
+                      <ConsoleStatusBadge label={getLogEventLabel(log.eventType)} tone={getLogEventTone(log.eventType)} />
+                      <span className="text-[11px] tabular-nums text-muted-foreground">{formatDate(log.createdAt)}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-4 text-[11px]">
                       <div>
-                        <p className="font-bold text-muted-foreground uppercase tracking-widest text-[9px] mb-1">Status</p>
-                        <p className="font-mono font-bold">{log.statusCode ?? "—"}</p>
+                        <p className="mb-1 text-[10px] font-medium text-muted-foreground">Status</p>
+                        <p className="font-mono font-medium">{log.statusCode ?? "—"}</p>
                       </div>
                       <div>
-                        <p className="font-bold text-muted-foreground uppercase tracking-widest text-[9px] mb-1">Origin</p>
+                        <p className="mb-1 text-[10px] font-medium text-muted-foreground">Origin</p>
                         <p className="truncate">{log.referrer || "DIRECT"}</p>
                       </div>
                       <div className="col-span-2">
-                        <p className="font-bold text-muted-foreground uppercase tracking-widest text-[9px] mb-1">Network Info</p>
+                        <p className="mb-1 text-[10px] font-medium text-muted-foreground">Network Info</p>
                         <p className="font-mono">{log.ipAddress || "—"}</p>
                       </div>
                     </div>
@@ -1183,30 +1131,30 @@ export function DashboardClient({ user, initialTab }: DashboardClientProps) {
       </Dialog>
 
       <Dialog open={!!pendingDeleteLink} onOpenChange={(open) => !open && setPendingDeleteLink(null)}>
-        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-sm rounded-xl border p-6 text-center shadow-none sm:p-8">
+        <DialogContent className={cn(consoleSurfaceClassName, "w-[calc(100vw-1.5rem)] max-w-sm border-0 p-6 text-center sm:p-8")}>
           <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
             <Trash2 className="h-7 w-7" />
           </div>
           <DialogHeader className="items-center">
-            <DialogTitle className="text-xl font-bold tracking-tight text-foreground">确认彻底移除？</DialogTitle>
+            <DialogTitle className="text-xl font-semibold text-foreground">确认彻底移除？</DialogTitle>
             <DialogDescription className="mt-2 text-sm leading-relaxed text-muted-foreground">
               此操作将销毁该短链及其所有统计数据。
               {pendingDeleteLink && (
-                <span className="mt-4 block rounded-xl bg-muted/50 p-3 font-mono text-xs font-bold text-foreground">
+                <span className={cn(consoleInsetClassName, "mt-4 block p-3 font-mono text-xs font-medium text-foreground")}>
                   {pendingDeleteLink.domain}/{pendingDeleteLink.slug}
                 </span>
               )}
             </DialogDescription>
           </DialogHeader>
           <div className="mt-8 grid grid-cols-2 gap-3">
-            <Button variant="ghost" onClick={() => setPendingDeleteLink(null)} disabled={!!deletingLinkId} className="h-11 rounded-lg bg-muted/30 text-[11px] font-bold uppercase tracking-widest">
+            <Button variant="ghost" onClick={() => setPendingDeleteLink(null)} disabled={!!deletingLinkId} className="h-10 bg-muted/30 text-sm font-medium">
               取消
             </Button>
             <Button
               variant="destructive"
               onClick={() => pendingDeleteLink && handleDelete(pendingDeleteLink.id)}
               disabled={!!deletingLinkId}
-              className="h-11 rounded-lg text-[11px] font-bold uppercase tracking-widest"
+              className="h-10 text-sm font-medium"
             >
               {deletingLinkId ? "同步中…" : "确定销毁"}
             </Button>

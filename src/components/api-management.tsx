@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   createClientErrorReporter,
@@ -12,7 +12,6 @@ import { cn, formatDate } from "@/lib/utils"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
@@ -28,6 +27,14 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import { Copy, Download, KeyRound, MailPlus, ShieldCheck, Trash2 } from "lucide-react"
+import {
+  ConsoleCodeBlock,
+  ConsoleKicker,
+  ConsoleMetric,
+  ConsoleStatusBadge,
+  consoleInsetClassName,
+  consoleSurfaceClassName,
+} from "@/components/dashboard/console-ui"
 
 interface ApiKeyRecord {
   id: string
@@ -62,44 +69,6 @@ const apiTabs = new Set(["keys", "docs", "bitwarden", "sharex"])
 
 function normalizeApiTab(value: string | null) {
   return value && apiTabs.has(value) ? value : "keys"
-}
-
-type ApiMetricTone = "neutral" | "good" | "warning"
-
-function ApiConsoleMetric({
-  label,
-  value,
-  description,
-  icon: Icon,
-  tone = "neutral",
-}: {
-  label: string
-  value: string | number
-  description: string
-  icon: ComponentType<{ className?: string }>
-  tone?: ApiMetricTone
-}) {
-  const toneClassName =
-    tone === "good"
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-200/70"
-      : tone === "warning"
-        ? "bg-amber-50 text-amber-700 ring-amber-200/70"
-        : "bg-muted/50 text-muted-foreground ring-border/70"
-
-  return (
-    <div className="min-w-0 border-b p-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          <p className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
-        </div>
-        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-md ring-1", toneClassName)}>
-          <Icon className="h-4 w-4" />
-        </span>
-      </div>
-      <p className="mt-3 truncate text-xs text-muted-foreground">{description}</p>
-    </div>
-  )
 }
 
 export function ApiManagementPanel() {
@@ -334,43 +303,40 @@ export function ApiManagementPanel() {
   return (
     <>
     <div className="space-y-5">
-      <section className="overflow-hidden rounded-xl border bg-card">
-        <div className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-end sm:justify-between">
+      <section className={cn(consoleSurfaceClassName, "overflow-hidden")}>
+        <div className="flex flex-col gap-4 p-5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0 space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Integration console</p>
-            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">API 集成控制台</h2>
+            <ConsoleKicker>Integration console</ConsoleKicker>
+            <h2 className="text-xl font-semibold sm:text-2xl">API 集成控制台</h2>
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
               管理外部访问密钥，检查可用域名，并复制 ShareX、Bitwarden 和 OpenAPI 接入配置。
             </p>
           </div>
-          <Badge variant="outline" className="h-7 w-fit gap-1.5 px-2.5 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-            <ShieldCheck className="h-3 w-3" />
-            API v1
-          </Badge>
+          <ConsoleStatusBadge label="API v1" tone="accent" />
         </div>
-        <div className="grid sm:grid-cols-2 xl:grid-cols-4">
-          <ApiConsoleMetric
+        <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-4">
+          <ConsoleMetric
             label="活跃密钥"
             value={loading ? "同步中" : keys.length}
             description={latestKeyDescription}
             icon={KeyRound}
             tone={keys.length > 0 ? "good" : "neutral"}
           />
-          <ApiConsoleMetric
+          <ConsoleMetric
             label="短链域名"
             value={shortDomains.length}
             description={shortDomains[0] || "等待域名配置"}
             icon={ShieldCheck}
             tone={shortDomains.length > 0 ? "good" : "neutral"}
           />
-          <ApiConsoleMetric
+          <ConsoleMetric
             label="邮箱域名"
             value={emailDomains.length}
             description={sampleEmailDomain}
             icon={MailPlus}
             tone={emailDomains.length > 0 ? "good" : "neutral"}
           />
-          <ApiConsoleMetric
+          <ConsoleMetric
             label="Telegram"
             value={telegramBotHandle ? "可绑定" : "未启用"}
             description={telegramStatus}
@@ -380,8 +346,8 @@ export function ApiManagementPanel() {
         </div>
       </section>
 
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="rounded-xl border bg-card p-4 sm:p-5">
-      <TabsList className="w-full justify-start overflow-x-auto">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className={cn(consoleSurfaceClassName, "p-4 sm:p-5")}>
+      <TabsList className="w-full justify-start overflow-x-auto bg-muted/60">
         <TabsTrigger value="keys">API Key</TabsTrigger>
         <TabsTrigger value="docs">接口示例</TabsTrigger>
         <TabsTrigger value="bitwarden">Bitwarden</TabsTrigger>
@@ -393,8 +359,8 @@ export function ApiManagementPanel() {
         <div className="grid gap-6 xl:grid-cols-[22rem_minmax(0,1fr)] 2xl:grid-cols-[24rem_minmax(0,1fr)]">
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-primary" />
-              <h2 className="text-lg font-semibold tracking-tight">管理密钥</h2>
+              <KeyRound className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">管理密钥</h2>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
               API 密钥允许你在其他应用程序中使用 Shortly 的功能。为了安全起见，完整的 Key 只会在创建时显示一次。
@@ -402,8 +368,8 @@ export function ApiManagementPanel() {
           </div>
 
           <div className="space-y-8">
-            <section className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
-              <h3 className="text-sm font-semibold text-foreground/80 lowercase tracking-wider">NEW KEY</h3>
+            <section className={cn(consoleInsetClassName, "space-y-4 bg-background p-4 sm:p-5")}>
+              <ConsoleKicker>New key</ConsoleKicker>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <label htmlFor="api-key-name" className="sr-only">
                   密钥名称
@@ -424,18 +390,18 @@ export function ApiManagementPanel() {
               </div>
               
               {latestPlainKey && (
-                <div className="mt-4 space-y-3 rounded-lg border border-primary/20 bg-primary/[0.02] p-4">
+                <div className={cn(consoleInsetClassName, "mt-4 space-y-3 bg-background p-4")}>
                    <div className="flex items-center justify-between gap-4">
-                     <p className="text-xs font-bold text-primary uppercase tracking-widest">请立即复制</p>
-                     <Badge variant="outline" className="bg-primary/5 text-[10px] font-mono border-primary/10">Secret</Badge>
+                     <ConsoleKicker>请立即复制</ConsoleKicker>
+                     <ConsoleStatusBadge label="Secret" tone="accent" />
                    </div>
-                   <div className="flex items-center gap-2 rounded-lg bg-background p-3 border">
+                   <div className={cn(consoleInsetClassName, "flex items-center gap-2 bg-muted/[0.16] p-3")}>
                      <code className="min-w-0 flex-1 break-all font-mono text-sm font-medium">{latestPlainKey}</code>
                       <Button
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => handleCopy(latestPlainKey, "API Key 已复制")}
-                        className="h-8 w-8 text-primary hover:bg-primary/5"
+                        className="h-8 w-8 text-[#0072F5] hover:bg-muted/60"
                         aria-label="复制新 API Key"
                         title="复制新 API Key"
                       >
@@ -447,20 +413,20 @@ export function ApiManagementPanel() {
             </section>
 
             {telegramBotHandle && (
-              <section className="space-y-4 rounded-xl border border-dashed bg-muted/5 p-4 sm:p-5">
+              <section className="space-y-4 rounded-lg border border-dashed bg-muted/5 p-4 sm:p-5">
                 <div className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                  <div className="h-1.5 w-1.5 rounded-full bg-[#0072F5]" />
                   <h3 className="text-sm font-semibold">Telegram 联动</h3>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   在 Telegram 中搜索 {telegramBotHandle} 并发送以下绑定命令，即可通过 TG 机器人直接创建短链和管理邮箱。
                 </p>
-                <div className="flex items-center gap-2 rounded-xl border bg-background p-3">
+                <div className={cn(consoleInsetClassName, "flex items-center gap-2 bg-background p-3")}>
                   <code className="min-w-0 flex-1 break-all font-mono text-xs text-foreground/70">{telegramBindCommand}</code>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 rounded-lg text-xs font-bold"
+                    className="h-8 text-xs font-medium"
                     onClick={() => handleCopy(telegramBindCommand, "绑定命令已复制")}
                   >
                     复制
@@ -472,31 +438,31 @@ export function ApiManagementPanel() {
             {/* Keys Table/List */}
             <section className="space-y-4">
                <div className="flex items-center justify-between px-1">
-                 <h3 className="text-sm font-bold text-muted-foreground/80 uppercase tracking-widest">ACTIVE KEYS</h3>
+                 <ConsoleKicker>Active keys</ConsoleKicker>
                  {!loading && keys.length > 0 && (
-                   <span className="text-[10px] font-bold tabular-nums text-muted-foreground">{keys.length} UNITS</span>
+                   <span className="text-xs tabular-nums text-muted-foreground">{keys.length} 个</span>
                  )}
                </div>
 
                {loading ? (
-                  <div className="flex h-32 items-center justify-center rounded-xl border border-dashed bg-muted/5 text-sm text-muted-foreground">正在同步密钥…</div>
+                  <div className="flex h-32 items-center justify-center rounded-lg border border-dashed bg-muted/5 text-sm text-muted-foreground">正在同步密钥…</div>
                 ) : keys.length === 0 ? (
-                  <div className="flex h-32 items-center justify-center rounded-xl border border-dashed bg-muted/5 text-sm text-muted-foreground">目前没有活跃的密钥。</div>
+                  <div className="flex h-32 items-center justify-center rounded-lg border border-dashed bg-muted/5 text-sm text-muted-foreground">目前没有活跃的密钥。</div>
                 ) : (
                   <div className="grid gap-3">
                     {keys.map((item) => (
-                      <div key={item.id} className="group relative rounded-xl border bg-card p-4 transition-colors hover:border-primary/20 sm:p-5">
+                      <div key={item.id} className={cn(consoleInsetClassName, "group relative bg-background p-4 transition-colors hover:bg-muted/[0.16] sm:p-5")}>
                         <div className="flex items-start justify-between gap-4">
                            <div className="min-w-0 space-y-3">
                              <div>
-                               <p className="truncate text-sm font-bold">{item.name || "未命名密钥"}</p>
-                               <p className="mt-1 font-mono text-[11px] text-muted-foreground tracking-tighter">
+                               <p className="truncate text-sm font-medium">{item.name || "未命名密钥"}</p>
+                               <p className="mt-1 font-mono text-[11px] text-muted-foreground">
                                  {maskPrefix(item.keyPrefix)}
                                </p>
                              </div>
-                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
-                               <span>LAST USED: {item.lastUsedAt ? formatDate(item.lastUsedAt) : "NEVER"}</span>
-                               <span>CREATED: {formatDate(item.createdAt)}</span>
+                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                               <span>上次使用：{item.lastUsedAt ? formatDate(item.lastUsedAt) : "从未使用"}</span>
+                               <span>创建：{formatDate(item.createdAt)}</span>
                              </div>
                            </div>
                            <Button
@@ -523,17 +489,17 @@ export function ApiManagementPanel() {
       <TabsContent value="docs" className="mt-4 space-y-8 sm:mt-6 sm:space-y-10">
         <div className="grid gap-6 xl:grid-cols-[22rem_minmax(0,1fr)] 2xl:grid-cols-[24rem_minmax(0,1fr)]">
           <div className="space-y-4 px-1">
-            <h2 className="text-xl font-bold tracking-tight">API 端点示例</h2>
+            <h2 className="text-xl font-semibold">API 端点示例</h2>
             <div className="space-y-1.5">
-               <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Base Domains</p>
-               <div className="space-y-3 rounded-lg border bg-muted/10 p-4">
+               <ConsoleKicker>Base domains</ConsoleKicker>
+               <div className={cn(consoleInsetClassName, "space-y-3 p-4")}>
                  <div>
-                   <p className="text-[10px] font-bold text-muted-foreground mb-1 uppercase">Emails</p>
-                   <p className="font-mono text-xs break-all text-primary">{emailDomains.join(", ") || "-"}</p>
+                   <p className="mb-1 text-xs font-medium text-muted-foreground">Emails</p>
+                   <p className="break-all font-mono text-xs text-foreground">{emailDomains.join(", ") || "-"}</p>
                  </div>
                  <div>
-                   <p className="text-[10px] font-bold text-muted-foreground mb-1 uppercase">Short Links</p>
-                   <p className="font-mono text-xs break-all text-primary">{shortDomains.join(", ") || "-"}</p>
+                   <p className="mb-1 text-xs font-medium text-muted-foreground">Short links</p>
+                   <p className="break-all font-mono text-xs text-foreground">{shortDomains.join(", ") || "-"}</p>
                  </div>
                </div>
             </div>
@@ -549,19 +515,14 @@ export function ApiManagementPanel() {
               <section key={i} className="space-y-4">
                 <div className="flex items-center justify-between px-1">
                   <div>
-                    <h3 className="text-sm font-bold uppercase tracking-widest">{example.title}</h3>
+                    <h3 className="text-sm font-medium">{example.title}</h3>
                     <p className="mt-1 text-xs text-muted-foreground">{example.desc}</p>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => handleCopy(example.cmd)} className="h-8 rounded-lg text-xs font-bold">
+                  <Button variant="ghost" size="sm" onClick={() => handleCopy(example.cmd)} className="h-8 text-xs font-medium">
                     <Copy className="mr-2 h-3.5 w-3.5" /> 复制
                   </Button>
                 </div>
-                <div className="relative group">
-                  <div className="absolute top-0 right-0 h-full w-4 bg-gradient-to-l from-background pointer-events-none" />
-                  <pre className="overflow-x-auto rounded-xl border bg-black/[0.02] p-4 font-mono text-[11px] leading-relaxed text-foreground/80 break-all whitespace-pre-wrap sm:p-5">
-                    {example.cmd}
-                  </pre>
-                </div>
+                <ConsoleCodeBlock className="sm:p-5">{example.cmd}</ConsoleCodeBlock>
               </section>
             ))}
           </div>
@@ -572,35 +533,35 @@ export function ApiManagementPanel() {
         <div className="grid gap-6 xl:grid-cols-[22rem_minmax(0,1fr)] 2xl:grid-cols-[24rem_minmax(0,1fr)]">
           <div className="space-y-4 px-1">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-primary" />
-              <h2 className="text-xl font-bold tracking-tight">Bitwarden 别名生成</h2>
+              <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-xl font-semibold">Bitwarden 别名生成</h2>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Shortly 提供 Addy.io 兼容接口，Bitwarden 生成用户名时可以直接创建一个新的临时邮箱别名。
             </p>
-            <div className="space-y-3 rounded-xl border bg-muted/10 p-4">
+            <div className={cn(consoleInsetClassName, "space-y-3 p-4")}>
               <div>
-                <p className="mb-1 text-[10px] font-bold uppercase text-muted-foreground">Server URL</p>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">Server URL</p>
                 <div className="flex items-center gap-2">
-                  <code className="min-w-0 flex-1 break-all font-mono text-xs text-primary">{bitwardenServerUrl}</code>
+                  <code className="min-w-0 flex-1 break-all font-mono text-xs text-foreground">{bitwardenServerUrl}</code>
                   <Button variant="ghost" size="icon-sm" className="h-8 w-8" onClick={() => handleCopy(bitwardenServerUrl, "Server URL 已复制")} aria-label="复制 Server URL" title="复制 Server URL">
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </div>
               <div>
-                <p className="mb-1 text-[10px] font-bold uppercase text-muted-foreground">Domain Name</p>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">Domain Name</p>
                 <div className="flex items-center gap-2">
-                  <code className="min-w-0 flex-1 break-all font-mono text-xs text-primary">{sampleEmailDomain}</code>
+                  <code className="min-w-0 flex-1 break-all font-mono text-xs text-foreground">{sampleEmailDomain}</code>
                   <Button variant="ghost" size="icon-sm" className="h-8 w-8" onClick={() => handleCopy(sampleEmailDomain, "邮箱域名已复制")} aria-label="复制邮箱域名" title="复制邮箱域名">
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </div>
               <div>
-                <p className="mb-1 text-[10px] font-bold uppercase text-muted-foreground">API Access Token</p>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">API Access Token</p>
                 <div className="flex items-center gap-2">
-                  <code className="min-w-0 flex-1 break-all font-mono text-xs text-primary">{bitwardenApiToken}</code>
+                  <code className="min-w-0 flex-1 break-all font-mono text-xs text-foreground">{bitwardenApiToken}</code>
                   <Button variant="ghost" size="icon-sm" className="h-8 w-8" onClick={() => handleCopy(bitwardenApiToken, "API Access Token 已复制")} aria-label="复制 API Access Token" title="复制 API Access Token">
                     <Copy className="h-3.5 w-3.5" />
                   </Button>
@@ -612,8 +573,8 @@ export function ApiManagementPanel() {
           <div className="space-y-8">
             <section className="space-y-4">
               <div className="flex items-center gap-2 px-1">
-                <MailPlus className="h-4 w-4 text-primary" />
-                <h3 className="text-sm font-bold uppercase tracking-widest">Bitwarden 设置步骤</h3>
+                <MailPlus className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-sm font-medium">Bitwarden 设置步骤</h3>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {[
@@ -638,9 +599,9 @@ export function ApiManagementPanel() {
                     desc: "Server URL 填写左侧地址，随后点击重新生成用户名即可创建别名。",
                   },
                 ].map((item) => (
-                  <div key={item.step} className="rounded-xl border bg-card p-4">
-                    <p className="mb-3 font-mono text-[10px] font-bold text-primary">{item.step}</p>
-                    <h4 className="text-sm font-bold">{item.title}</h4>
+                  <div key={item.step} className={cn(consoleInsetClassName, "bg-background p-4")}>
+                    <p className="mb-3 font-mono text-[10px] font-medium text-[#0072F5]">{item.step}</p>
+                    <h4 className="text-sm font-medium">{item.title}</h4>
                     <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{item.desc}</p>
                   </div>
                 ))}
@@ -650,16 +611,14 @@ export function ApiManagementPanel() {
             <section className="space-y-4">
               <div className="flex items-center justify-between px-1">
                 <div>
-                  <h3 className="text-sm font-bold uppercase tracking-widest">兼容接口测试</h3>
+                  <h3 className="text-sm font-medium">兼容接口测试</h3>
                   <p className="mt-1 text-xs text-muted-foreground">Bitwarden 会调用同一个 Addy.io 兼容端点。</p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => handleCopy(bitwardenAliasCommand)} className="h-8 rounded-lg text-xs font-bold">
+                <Button variant="ghost" size="sm" onClick={() => handleCopy(bitwardenAliasCommand)} className="h-8 text-xs font-medium">
                   <Copy className="mr-2 h-3.5 w-3.5" /> 复制
                 </Button>
               </div>
-              <pre className="overflow-x-auto rounded-xl border bg-black/[0.02] p-4 font-mono text-[11px] leading-relaxed text-foreground/80 break-all whitespace-pre-wrap sm:p-5">
-                {bitwardenAliasCommand}
-              </pre>
+              <ConsoleCodeBlock className="sm:p-5">{bitwardenAliasCommand}</ConsoleCodeBlock>
             </section>
           </div>
         </div>
@@ -668,7 +627,7 @@ export function ApiManagementPanel() {
       <TabsContent value="sharex" className="mt-4 sm:mt-6">
         <div className="grid gap-6 xl:grid-cols-[22rem_minmax(0,1fr)] 2xl:grid-cols-[24rem_minmax(0,1fr)]">
           <div className="space-y-4 px-1">
-            <h2 className="text-xl font-bold tracking-tight">ShareX 集成</h2>
+            <h2 className="text-xl font-semibold">ShareX 集成</h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
               针对 Windows 用户的 ShareX 图片/链接同步神器。下载以下 sxcu 配置文件并导入 ShareX 即可使用。
             </p>
@@ -684,14 +643,14 @@ export function ApiManagementPanel() {
                 spellCheck={false}
                 value={sharexApiKey}
                 onChange={(e) => setSharexApiKey(e.target.value.trim())}
-                className="h-10 border-primary/20 bg-primary/5 placeholder:text-primary/40"
+                className="h-10"
               />
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
-              <Button onClick={handleDownloadShareXConfig} className="h-10 font-bold">
+              <Button onClick={handleDownloadShareXConfig} className="h-10 font-medium">
                 <Download className="mr-2 h-4 w-4" /> 下载配置
               </Button>
-              <Button variant="outline" onClick={() => handleCopy(sharexConfig)} className="h-10 font-bold border-dashed">
+              <Button variant="outline" onClick={() => handleCopy(sharexConfig)} className="h-10 border-dashed font-medium">
                 <Copy className="mr-2 h-4 w-4" /> 复制 JSON
               </Button>
             </div>
@@ -699,11 +658,9 @@ export function ApiManagementPanel() {
 
           <div className="space-y-4">
              <div className="flex items-center justify-between px-1">
-               <h3 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Configuration Preview</h3>
+               <ConsoleKicker>Configuration preview</ConsoleKicker>
              </div>
-             <pre className="max-h-[30rem] overflow-auto rounded-xl border bg-black/[0.02] p-4 font-mono text-[10px] leading-normal text-muted-foreground/80 sm:p-6">
-                {sharexConfig}
-             </pre>
+             <ConsoleCodeBlock className="max-h-[30rem] overflow-auto text-[10px] leading-normal sm:p-6">{sharexConfig}</ConsoleCodeBlock>
           </div>
         </div>
       </TabsContent>

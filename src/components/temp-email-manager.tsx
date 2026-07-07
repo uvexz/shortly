@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
@@ -26,6 +25,14 @@ import { cn, formatDate } from "@/lib/utils"
 import { useMediaQuery } from "@/lib/use-media-query"
 import { generateRandomEmailPrefix } from "@/lib/random-email-prefix"
 import { Activity, AlertTriangle, CheckCircle2, Clock3, Copy, Inbox, MailPlus, RefreshCw, Trash2 } from "lucide-react"
+import {
+  ConsoleKicker,
+  ConsoleMetric,
+  ConsoleStatusBadge,
+  consoleInsetClassName,
+  consoleSurfaceClassName,
+  type ConsoleTone,
+} from "@/components/dashboard/console-ui"
 
 interface MailboxRecord {
   id: string
@@ -258,45 +265,7 @@ function PaginationFooter({
   )
 }
 
-type TempEmailMetricTone = "neutral" | "good" | "warning" | "danger"
-
-function TempEmailMetric({
-  label,
-  value,
-  description,
-  icon: Icon,
-  tone = "neutral",
-}: {
-  label: string
-  value: string | number
-  description: string
-  icon: ComponentType<{ className?: string }>
-  tone?: TempEmailMetricTone
-}) {
-  const toneClassName =
-    tone === "good"
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-200/70"
-      : tone === "warning"
-        ? "bg-amber-50 text-amber-700 ring-amber-200/70"
-        : tone === "danger"
-          ? "bg-destructive/5 text-destructive ring-destructive/20"
-          : "bg-muted/50 text-muted-foreground ring-border/70"
-
-  return (
-    <div className="min-w-0 border-b p-4 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          <p className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
-        </div>
-        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-md ring-1", toneClassName)}>
-          <Icon className="h-4 w-4" />
-        </span>
-      </div>
-      <p className="mt-3 truncate text-xs text-muted-foreground">{description}</p>
-    </div>
-  )
-}
+type TempEmailMetricTone = ConsoleTone
 
 const messageDetailTabLabels = {
   text: "TXT",
@@ -487,10 +456,6 @@ function clearMessageDetailState() {
   }
 }
 
-function getDetailBadgeVariant(isRead: boolean): "outline" | "secondary" {
-  return isRead ? "outline" : "secondary"
-}
-
 function getReadableTabLabel(tab: MessageDetailTab) {
   return messageDetailTabLabels[tab]
 }
@@ -530,7 +495,7 @@ function getMessageActionsClassName() {
 }
 
 function getMetadataGridClassName() {
-  return "grid gap-3 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-2"
+  return "grid gap-3 rounded-md bg-muted/[0.18] p-3 text-sm shadow-[0_0_0_1px_rgba(0,0,0,0.08)] sm:grid-cols-2"
 }
 
 function getMetadataBlockClassName() {
@@ -538,11 +503,11 @@ function getMetadataBlockClassName() {
 }
 
 function getPreBlockClassName() {
-  return "max-h-[55vh] overflow-auto rounded-lg border bg-muted/20 p-4 font-mono text-xs leading-6 whitespace-pre-wrap break-words"
+  return "max-h-[55vh] overflow-auto rounded-md bg-muted/[0.18] p-4 font-mono text-xs leading-6 whitespace-pre-wrap break-words shadow-[0_0_0_1px_rgba(0,0,0,0.08)]"
 }
 
 function getHtmlFrameClassName() {
-  return "h-[min(60vh,32rem)] min-h-[18rem] w-full rounded-lg border bg-white"
+  return "h-[min(60vh,32rem)] min-h-[18rem] w-full rounded-md bg-white"
 }
 
 function getEmptyStateClassName() {
@@ -550,11 +515,11 @@ function getEmptyStateClassName() {
 }
 
 function getAttachmentListClassName() {
-  return "space-y-2 rounded-lg border bg-muted/20 p-3 break-all"
+  return "space-y-2 rounded-md bg-muted/[0.18] p-3 break-all shadow-[0_0_0_1px_rgba(0,0,0,0.08)]"
 }
 
 function getAttachmentItemClassName() {
-  return "flex flex-col gap-1 rounded-md border bg-background px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+  return "flex flex-col gap-1 rounded-md bg-background px-3 py-2 shadow-[0_0_0_1px_rgba(0,0,0,0.08)] sm:flex-row sm:items-center sm:justify-between"
 }
 
 function getAttachmentMetaClassName() {
@@ -566,7 +531,7 @@ function getDetailContainerClassName() {
 }
 
 function getMetadataLabelClassName() {
-  return "text-xs uppercase tracking-[0.12em] text-muted-foreground"
+  return "text-xs font-medium text-muted-foreground"
 }
 
 function getMetadataValueClassName() {
@@ -610,15 +575,15 @@ function getInlineMutedClassName() {
 }
 
 function getHeaderListClassName() {
-  return "space-y-2 rounded-lg border bg-muted/20 p-3"
+  return "space-y-2 rounded-md bg-muted/[0.18] p-3 shadow-[0_0_0_1px_rgba(0,0,0,0.08)]"
 }
 
 function getHeaderItemClassName() {
-  return "rounded-md border bg-background px-3 py-2"
+  return "rounded-md bg-background px-3 py-2 shadow-[0_0_0_1px_rgba(0,0,0,0.08)]"
 }
 
 function getHeaderNameClassName() {
-  return "text-xs uppercase tracking-[0.12em] text-muted-foreground"
+  return "text-xs font-medium text-muted-foreground"
 }
 
 function getHeaderValueClassName() {
@@ -674,7 +639,7 @@ function getTabContentClassName() {
 }
 
 function getHtmlFrameWrapperClassName() {
-  return "overflow-hidden rounded-lg border"
+  return "overflow-hidden rounded-md shadow-[0_0_0_1px_rgba(0,0,0,0.08)]"
 }
 
 function getMessageDialogAriaLabel() {
@@ -788,10 +753,6 @@ function getMessageSenderPrimary(message: MessageRecord) {
 
 function getMessageSenderSecondaryLine(message: MessageRecord) {
   return getMessageSenderSecondary(message)
-}
-
-function getMessageDetailStatusVariant(detail: MessageDetailRecord) {
-  return getDetailBadgeVariant(detail.isRead)
 }
 
 function getMessageDetailStatusText(detail: MessageDetailRecord) {
@@ -1773,7 +1734,7 @@ export function TempEmailManager() {
       return (
         <div className="flex min-h-0 flex-1 items-center justify-center px-8 text-center">
           <div className="max-w-sm space-y-3">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border bg-muted/30">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-muted/30 shadow-[0_0_0_1px_rgba(0,0,0,0.08)]">
               <Inbox className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="space-y-1">
@@ -1808,7 +1769,7 @@ export function TempEmailManager() {
 
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="space-y-4 border-b px-6 py-5">
+        <div className="space-y-4 px-6 py-5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 space-y-2">
               <h3 className="break-words text-lg font-semibold leading-snug">{getMessageTitleForDialog(messageDetail, selectedMessage)}</h3>
@@ -1845,15 +1806,15 @@ export function TempEmailManager() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={getMessageDetailStatusVariant(messageDetail)}>{getMessageDetailStatusText(messageDetail)}</Badge>
-            {messageDetail.hasAttachments && <Badge variant="outline">{getMessageAttachmentBadgeText()}</Badge>}
+            <ConsoleStatusBadge label={getMessageDetailStatusText(messageDetail)} tone={messageDetail.isRead ? "neutral" : "accent"} />
+            {messageDetail.hasAttachments && <ConsoleStatusBadge label={getMessageAttachmentBadgeText()} tone="neutral" />}
             <span className="break-all text-xs text-muted-foreground">收件人：{getDetailMailboxLine(messageDetail)}</span>
           </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
           <div className="space-y-5">
-            <div className="grid gap-3 rounded-lg border bg-muted/15 p-3 text-sm md:grid-cols-2">
+            <div className={cn(consoleInsetClassName, "grid gap-3 p-3 text-sm md:grid-cols-2")}>
               <div className="min-w-0">
                 <p className={getMessageDetailMetadataLabelClassName()}>发件人</p>
                 <p className={getMessageDetailMetadataValueClassName()}>{getDetailFromLine(messageDetail)}</p>
@@ -1930,11 +1891,11 @@ export function TempEmailManager() {
 
   const tempEmailWorkspace = (
     <div className="space-y-5">
-      <section className="overflow-hidden rounded-xl border bg-card">
-        <div className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-end sm:justify-between">
+      <section className={cn(consoleSurfaceClassName, "overflow-hidden")}>
+        <div className="flex flex-col gap-4 p-5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0 space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Inbox operations</p>
-            <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">临时邮箱工作台</h2>
+            <ConsoleKicker>Inbox operations</ConsoleKicker>
+            <h2 className="text-xl font-semibold sm:text-2xl">临时邮箱工作台</h2>
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
               创建一次性收件箱，快速检查未读消息，并在右侧保留邮件正文、附件和源码上下文。
             </p>
@@ -1951,28 +1912,28 @@ export function TempEmailManager() {
             刷新收件箱
           </Button>
         </div>
-        <div className="grid sm:grid-cols-2 xl:grid-cols-4">
-          <TempEmailMetric
+        <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-4">
+          <ConsoleMetric
             label="邮箱总数"
             value={mailboxTotalItems}
             description={loadingMailboxes ? "正在同步邮箱列表" : `${mailboxes.length} 个显示在当前页`}
             icon={Inbox}
           />
-          <TempEmailMetric
+          <ConsoleMetric
             label="当前收件箱"
             value={selectedMailbox ? selectedMailbox.emailAddress : "未选择"}
             description={mailboxStatusDescription}
             icon={Clock3}
             tone={selectedMailbox ? "good" : "neutral"}
           />
-          <TempEmailMetric
+          <ConsoleMetric
             label="消息队列"
             value={selectedMailbox ? messageTotalItems : 0}
             description={selectedMailbox ? `${visibleUnreadMessages} 封未读显示中` : "选择邮箱后同步消息"}
             icon={Activity}
             tone={messageMetricTone}
           />
-          <TempEmailMetric
+          <ConsoleMetric
             label="可用域名"
             value={domainMetricLabel}
             description={domainsError || (loadingDomains ? "正在加载域名" : selectedDomain || "暂无域名")}
@@ -1982,11 +1943,11 @@ export function TempEmailManager() {
         </div>
       </section>
 
-      <div className="grid min-h-[calc(100vh-18rem)] overflow-hidden rounded-xl border bg-card lg:grid-cols-[22rem_minmax(22rem,0.9fr)_minmax(30rem,1.25fr)]">
-      <section className="flex min-h-0 flex-col border-b lg:border-b-0 lg:border-r">
-        <div className="border-b p-5">
+      <div className={cn(consoleSurfaceClassName, "grid min-h-[calc(100vh-18rem)] overflow-hidden lg:grid-cols-[22rem_minmax(22rem,0.9fr)_minmax(30rem,1.25fr)]")}>
+      <section className="flex min-h-0 flex-col shadow-[0_1px_0_0_rgba(0,0,0,0.08)] lg:shadow-[1px_0_0_0_rgba(0,0,0,0.08)]">
+        <div className="p-5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
           <div className="space-y-1">
-            <h2 className="text-base font-semibold tracking-tight">创建临时邮箱</h2>
+            <h2 className="text-base font-semibold">创建临时邮箱</h2>
             <p className="text-sm text-muted-foreground">快速生成临时邮箱地址</p>
           </div>
 
@@ -2032,7 +1993,7 @@ export function TempEmailManager() {
               <button
                 type="button"
                 onClick={handleGenerateRandomPrefix}
-                className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="dashboard-focus-ring inline-flex items-center gap-1 rounded-sm hover:text-foreground"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 随机前缀
@@ -2040,7 +2001,7 @@ export function TempEmailManager() {
               <span className="truncate">前缀 ≥ {selectedMinLocalPartLength}</span>
             </div>
 
-            {mailboxPreview && <p className="break-all rounded-lg border bg-muted/20 px-3 py-2 font-mono text-xs">{mailboxPreview}</p>}
+            {mailboxPreview && <p className={cn(consoleInsetClassName, "break-all px-3 py-2 font-mono text-xs")}>{mailboxPreview}</p>}
             {mailboxLocalPartTooShort && (
               <p className="text-xs text-destructive">当前域名要求邮箱前缀至少 {selectedMinLocalPartLength} 个字符。</p>
             )}
@@ -2058,8 +2019,8 @@ export function TempEmailManager() {
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex items-center justify-between border-b px-5 py-4">
-            <h3 className="text-base font-semibold tracking-tight">邮箱列表</h3>
+          <div className="flex items-center justify-between px-5 py-4 shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
+            <h3 className="text-base font-semibold">邮箱列表</h3>
             <Button
               type="button"
               variant="outline"
@@ -2092,10 +2053,10 @@ export function TempEmailManager() {
                 {mailboxes.map((mailbox) => (
                   <div
                     key={mailbox.id}
-                    className={`group rounded-lg border p-3 transition-colors ${
+                    className={`group rounded-lg p-3 shadow-[0_0_0_1px_rgba(0,0,0,0.08)] transition-colors ${
                       mailbox.id === selectedMailboxId
-                        ? "border-primary/60 bg-primary/[0.04]"
-                        : "bg-background hover:border-primary/25 hover:bg-muted/25"
+                        ? "bg-muted/[0.36] shadow-[0_0_0_1px_rgba(0,114,245,0.42)]"
+                        : "bg-background hover:bg-muted/25"
                     }`}
                   >
                     <div className="flex items-start gap-2">
@@ -2107,14 +2068,14 @@ export function TempEmailManager() {
                           }
                           updateSelectedMailboxId(mailbox.id)
                         }}
-                        className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        className="dashboard-focus-ring min-w-0 flex-1 rounded-md text-left"
                       >
-                        <p className={`break-all font-mono text-sm ${mailbox.id === selectedMailboxId ? "font-semibold text-primary" : "text-foreground"}`}>
+                        <p className={`break-all font-mono text-sm ${mailbox.id === selectedMailboxId ? "font-medium text-foreground" : "text-foreground"}`}>
                           {mailbox.emailAddress}
                         </p>
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <span>{mailbox.messageCount} 封邮件</span>
-                          {mailbox.unreadCount > 0 && <Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px]">{mailbox.unreadCount} 未读</Badge>}
+                          {mailbox.unreadCount > 0 && <ConsoleStatusBadge label={`${mailbox.unreadCount} 未读`} tone="warning" />}
                         </div>
                       </button>
                       <Button
@@ -2148,11 +2109,11 @@ export function TempEmailManager() {
         </div>
       </section>
 
-      <section className="flex min-h-0 flex-col border-b lg:border-b-0 lg:border-r">
-        <div className="border-b p-5">
+      <section className="flex min-h-0 flex-col shadow-[0_1px_0_0_rgba(0,0,0,0.08)] lg:shadow-[1px_0_0_0_rgba(0,0,0,0.08)]">
+        <div className="p-5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="text-base font-semibold tracking-tight">邮件列表</h3>
+              <h3 className="text-base font-semibold">邮件列表</h3>
               <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
                 {selectedMailbox?.emailAddress || "选择一个邮箱"}
               </p>
@@ -2212,18 +2173,18 @@ export function TempEmailManager() {
                   key={message.id}
                   type="button"
                   onClick={() => handleOpenMessage(message)}
-                  className={`group w-full px-5 py-4 text-left outline-none transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                    isSelectedMessage(message, selectedMessage) ? "bg-primary/[0.05] ring-1 ring-inset ring-primary/40" : ""
+                  className={`dashboard-focus-ring group w-full rounded-none px-5 py-4 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 ${
+                    isSelectedMessage(message, selectedMessage) ? "bg-muted/[0.36] shadow-[inset_2px_0_0_#0072F5]" : ""
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${message.isRead ? "bg-transparent" : "bg-primary"}`} />
+                    <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${message.isRead ? "bg-transparent" : "bg-[#0072F5]"}`} />
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-start justify-between gap-3">
-                        <p className="truncate text-sm font-semibold">{getMessageSenderPrimary(message)}</p>
+                        <p className="truncate text-sm font-medium">{getMessageSenderPrimary(message)}</p>
                         <span className="shrink-0 text-xs text-muted-foreground">{formatDate(message.receivedAt)}</span>
                       </div>
-                      <p className={`line-clamp-1 text-sm ${message.isRead ? "text-foreground" : "font-semibold text-foreground"}`}>
+                      <p className={`line-clamp-1 text-sm ${message.isRead ? "text-foreground" : "font-medium text-foreground"}`}>
                         {getMessageTitle(message)}
                       </p>
                       <p className="line-clamp-1 text-xs text-muted-foreground">{getMessagePreviewForList(message)}</p>
@@ -2317,10 +2278,8 @@ export function TempEmailManager() {
                       <p className={`${getMessageDetailInlineMutedClassName()} break-all`}>{getDetailMailboxLine(messageDetail)}</p>
                     </div>
                     <div className={getMessageDetailActionsClassName()}>
-                      <Badge variant={getMessageDetailStatusVariant(messageDetail)}>
-                        {getMessageDetailStatusText(messageDetail)}
-                      </Badge>
-                      {messageDetail.hasAttachments && <Badge variant="outline">{getMessageAttachmentBadgeText()}</Badge>}
+                      <ConsoleStatusBadge label={getMessageDetailStatusText(messageDetail)} tone={messageDetail.isRead ? "neutral" : "accent"} />
+                      {messageDetail.hasAttachments && <ConsoleStatusBadge label={getMessageAttachmentBadgeText()} tone="neutral" />}
                     </div>
                   </div>
 
