@@ -10,10 +10,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { toast } from "sonner";
-import { Mail, KeyRound, Loader2, CheckCircle2, ChevronRight } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronRight,
+  KeyRound,
+  Loader2,
+  Mail,
+} from "lucide-react";
 
 const GithubIcon = (props: React.ComponentProps<"svg">) => (
   <svg
@@ -169,7 +175,7 @@ export function AuthForm({
         authFormReporter.warn("add_passkey_failed_response", { mode, email });
         toast.error(getUserFacingErrorMessage(res.error, "无法保存 Passkey"));
       } else {
-        toast.success("Passkey 已保存 — 您现在可以使用它立即登录");
+        toast.success("Passkey 已保存，您现在可以使用它立即登录");
       }
     } catch (error) {
       authFormReporter.report("add_passkey_failed_exception", error, {
@@ -183,16 +189,32 @@ export function AuthForm({
     }
   }
 
+  const hasSecondaryProviders = enableGithub || mode === "login";
+  const providerCount = (enableGithub ? 1 : 0) + (mode === "login" ? 1 : 0);
+  const showProviderDivider =
+    enableEmail && hasSecondaryProviders && step === "email";
+
+  const inputClass =
+    "auth-control-shadow h-10 rounded-md border-transparent bg-white px-3 text-sm text-[#171717] transition-[box-shadow,color] placeholder:text-[#8f8f8f] focus-visible:border-transparent focus-visible:ring-0";
+  const primaryButtonClass =
+    "auth-focus-ring h-10 w-full rounded-md bg-[#171717] text-sm font-medium text-white shadow-[0_0_0_1px_rgba(0,0,0,0.08)] transition-colors hover:bg-[#2f2f2f] focus-visible:ring-0 disabled:bg-[#171717]";
+  const secondaryButtonClass =
+    "auth-control-shadow h-10 rounded-md border-transparent bg-white text-sm font-medium text-[#171717] transition-colors hover:bg-[#f2f2f2] focus-visible:border-transparent focus-visible:ring-0";
+  const ghostButtonClass =
+    "auth-focus-ring h-9 rounded-md text-sm font-medium text-[#4d4d4d] transition-colors hover:bg-[#ebebeb] hover:text-[#171717] focus-visible:ring-0";
+
   if (step === "add-passkey") {
     return (
-      <div className="flex animate-in fade-in slide-in-from-bottom-4 duration-500 flex-col items-center gap-6 py-4 text-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/5 text-primary ring-8 ring-primary/5">
-            <CheckCircle2 className="h-8 w-8" />
+      <div className="flex flex-col items-center gap-6 py-2 text-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="flex size-12 items-center justify-center rounded-xl bg-white text-[#171717] auth-surface-shadow">
+            <CheckCircle2 className="size-5" />
           </div>
-          <div className="space-y-1">
-            <p className="text-xl font-extrabold tracking-tight">账户创建成功</p>
-            <p className="max-w-xs text-sm font-medium text-muted-foreground">
+          <div className="space-y-2">
+            <p className="text-xl font-semibold leading-7 text-[#171717]">
+              账户创建成功
+            </p>
+            <p className="max-w-xs text-sm leading-6 text-[#4d4d4d]">
               保存 Passkey，以便下次无需验证码即可立即登录。
             </p>
           </div>
@@ -201,12 +223,12 @@ export function AuthForm({
           <Button
             onClick={handleAddPasskey}
             disabled={loading}
-            className="h-12 w-full rounded-xl text-base font-bold shadow-lg shadow-primary/10 transition-[box-shadow,transform] hover:-translate-y-1 hover:shadow-xl"
+            className={primaryButtonClass}
           >
             {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
             ) : (
-              <KeyRound className="mr-2 h-5 w-5" />
+              <KeyRound className="size-4" />
             )}
             保存 Passkey
           </Button>
@@ -214,7 +236,7 @@ export function AuthForm({
             variant="ghost"
             onClick={finish}
             disabled={loading}
-            className="h-12 w-full rounded-xl font-semibold text-muted-foreground hover:text-foreground"
+            className={ghostButtonClass}
           >
             跳过并进入后台
           </Button>
@@ -223,25 +245,34 @@ export function AuthForm({
     );
   }
 
-  const hasProviders = enableEmail || enableGithub;
+  if (!enableEmail && !hasSecondaryProviders) {
+    return (
+      <div className="rounded-md bg-[#fafafa] p-4 text-sm leading-6 text-[#4d4d4d] auth-border-shadow">
+        当前没有启用可用的登录方式。请稍后再试，或联系站点管理员。
+      </div>
+    );
+  }
 
   return (
-    <div className="flex animate-in fade-in slide-in-from-bottom-4 duration-500 flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {enableEmail && (
         <>
           {step === "email" ? (
             <div className="flex flex-col gap-3">
               <div className="space-y-2">
-                <Label htmlFor="auth-email" className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60">
+                <Label
+                  htmlFor="auth-email"
+                  className="text-sm font-medium leading-5 text-[#171717]"
+                >
                   电子邮箱地址
                 </Label>
-                <div className="relative group">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                <div className="group relative">
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#8f8f8f] transition-colors group-focus-within:text-[#0072f5]" />
                   <Input
                     id="auth-email"
                     name="email"
                     type="email"
-                    placeholder="you@example.com…"
+                    placeholder="you@example.com"
                     autoComplete="email"
                     spellCheck={false}
                     value={email}
@@ -249,39 +280,47 @@ export function AuthForm({
                     onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
                     disabled={loading}
                     autoFocus={isDesktop}
-                    className="h-12 rounded-xl border-border/60 bg-muted/40 pl-10 transition-[background-color,border-color,box-shadow] focus-visible:bg-background focus-visible:ring-4 focus-visible:ring-primary/5"
+                    className={`${inputClass} pl-10`}
                   />
                 </div>
               </div>
               <Button
                 onClick={handleSendOtp}
                 disabled={loading || !email}
-                className="h-12 w-full rounded-xl text-base font-bold shadow-lg shadow-primary/10 transition-[box-shadow,transform] hover:-translate-y-1 hover:shadow-xl"
+                className={primaryButtonClass}
               >
                 {loading ? (
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <ChevronRight className="mr-2 h-5 w-5" />
+                  <ChevronRight className="size-4" />
                 )}
                 {mode === "register" ? "继续创建账户" : "获取登录验证码"}
               </Button>
             </div>
           ) : (
-            <div className="flex animate-in fade-in zoom-in-95 duration-500 flex-col gap-4">
+            <div className="flex flex-col gap-4">
               <div className="space-y-3">
-                <Label htmlFor="auth-otp" className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60">
-                  请输入验证码
+                <Label
+                  htmlFor="auth-otp"
+                  className="text-sm font-medium leading-5 text-[#171717]"
+                >
+                  输入验证码
                 </Label>
-                <div className="rounded-lg border border-dashed border-primary/20 bg-primary/5 p-4 text-center">
-                  <p className="text-sm font-medium text-muted-foreground mb-1">已发送至</p>
-                  <p className="break-all font-bold text-primary">{email}</p>
+                <div className="rounded-md bg-[#fafafa] px-3 py-3 auth-border-shadow">
+                  <div className="flex items-center gap-2 text-sm font-medium text-[#171717]">
+                    <span className="size-2 rounded-full bg-[#0072f5]" />
+                    验证码已发送
+                  </div>
+                  <p className="mt-1 break-all text-sm leading-6 text-[#4d4d4d]">
+                    {email}
+                  </p>
                 </div>
                 <Input
                   id="auth-otp"
                   name="one-time-code"
                   type="text"
                   inputMode="numeric"
-                  placeholder="123456…"
+                  placeholder="123456"
                   autoComplete="one-time-code"
                   spellCheck={false}
                   value={otp}
@@ -290,15 +329,15 @@ export function AuthForm({
                   disabled={loading}
                   maxLength={6}
                   autoFocus={isDesktop}
-                  className="h-16 rounded-xl border-border/60 bg-background text-center text-3xl font-black tracking-[0.5em] transition-[border-color,box-shadow] focus-visible:ring-4 focus-visible:ring-primary/5"
+                  className={`${inputClass} h-12 text-center font-mono text-lg font-medium`}
                 />
               </div>
               <Button
                 onClick={handleVerifyOtp}
                 disabled={loading || otp.length < 6}
-                className="h-12 w-full rounded-xl text-base font-bold shadow-lg shadow-primary/10 transition-[box-shadow,transform] hover:-translate-y-1 hover:shadow-xl"
+                className={primaryButtonClass}
               >
-                {loading && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+                {loading && <Loader2 className="size-4 animate-spin" />}
                 完成验证并登录
               </Button>
               <Button
@@ -308,35 +347,40 @@ export function AuthForm({
                   setStep("email");
                   setOtp("");
                 }}
-                className="h-10 w-full rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground"
+                className={ghostButtonClass}
               >
-                ← 邮箱填错了？返回修改
+                <ArrowLeft className="size-4" />
+                返回修改邮箱
               </Button>
             </div>
           )}
         </>
       )}
 
-      {hasProviders && step === "email" && (
-        <div className="relative flex items-center py-2">
-          <Separator className="flex-1" />
-          <span className="px-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/40">
-            或第三方登录
-          </span>
-          <Separator className="flex-1" />
+      {showProviderDivider && (
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-1">
+          <span className="h-px bg-[#ebebeb]" />
+          <span className="text-xs text-[#8f8f8f]">或使用其他方式</span>
+          <span className="h-px bg-[#ebebeb]" />
         </div>
       )}
 
-      {step === "email" && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {step === "email" && hasSecondaryProviders && (
+        <div
+          className={
+            providerCount > 1
+              ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
+              : "grid grid-cols-1 gap-3"
+          }
+        >
           {enableGithub && (
             <Button
               variant="outline"
               onClick={handleGithub}
               disabled={loading}
-              className="flex h-12 items-center justify-center gap-2 rounded-xl bg-background font-bold transition-[background-color,transform] hover:-translate-y-1 hover:bg-accent"
+              className={secondaryButtonClass}
             >
-              <GithubIcon className="h-5 w-5" />
+              <GithubIcon className="size-4" />
               <span>GitHub</span>
             </Button>
           )}
@@ -346,9 +390,9 @@ export function AuthForm({
               variant="outline"
               onClick={handleSignInPasskey}
               disabled={loading}
-              className="flex h-12 items-center justify-center gap-2 rounded-xl bg-background font-bold transition-[background-color,transform] hover:-translate-y-1 hover:bg-accent"
+              className={secondaryButtonClass}
             >
-              <KeyRound className="h-5 w-5" />
+              <KeyRound className="size-4" />
               <span>Passkey</span>
             </Button>
           )}
