@@ -24,7 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn, formatDate } from "@/lib/utils"
 import { useMediaQuery } from "@/lib/use-media-query"
 import { generateRandomEmailPrefix } from "@/lib/random-email-prefix"
-import { Activity, AlertTriangle, CheckCircle2, Clock3, Copy, Inbox, MailPlus, RefreshCw, Trash2 } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Copy, Inbox, MailPlus, RefreshCw, Search, Trash2, X } from "lucide-react"
 import {
   ConsoleKicker,
   ConsoleMetric,
@@ -43,16 +43,14 @@ interface MailboxRecord {
   messageCount: number
 }
 
-interface MailboxResponse {
+interface MailboxOptionsResponse {
   data: MailboxRecord[]
-  total: number
-  page: number
-  limit: number
-  totalPages: number
 }
 
 interface MessageRecord {
   id: string
+  mailboxId: string
+  mailboxEmailAddress: string
   messageId: string | null
   from: string
   fromName: string | null
@@ -65,12 +63,9 @@ interface MessageRecord {
 }
 
 interface MessageResponse {
-  mailbox: {
-    id: string
-    emailAddress: string
-  }
   data: MessageRecord[]
   total: number
+  unread: number
   page: number
   limit: number
   totalPages: number
@@ -127,14 +122,6 @@ interface DomainRecord {
 interface DomainsResponse {
   emailDomains: DomainRecord[]
   shortDomains: DomainRecord[]
-}
-
-function getNextMailboxSelection(rows: MailboxRecord[], currentMailboxId: string | null) {
-  if (currentMailboxId && rows.some((item) => item.id === currentMailboxId)) {
-    return currentMailboxId
-  }
-
-  return rows[0]?.id ?? null
 }
 
 function formatMessageContact(contact: MessageContactRecord) {
@@ -314,12 +301,6 @@ function getMessageTitle(message: Pick<MessageRecord, "subject"> | Pick<MessageD
 
 function getMessageSender(message: Pick<MessageRecord, "from" | "fromName"> | Pick<MessageDetailRecord, "from" | "fromName">) {
   return message.fromName || message.from
-}
-
-function getMessageSenderSecondary(
-  message: Pick<MessageRecord, "from" | "fromName"> | Pick<MessageDetailRecord, "from" | "fromName">
-) {
-  return message.fromName ? message.from : null
 }
 
 function getInitialMessageDetailTab(detail: MessageDetailRecord): MessageDetailTab {
@@ -751,10 +732,6 @@ function getMessageSenderPrimary(message: MessageRecord) {
   return getMessageSender(message)
 }
 
-function getMessageSenderSecondaryLine(message: MessageRecord) {
-  return getMessageSenderSecondary(message)
-}
-
 function getMessageDetailStatusText(detail: MessageDetailRecord) {
   return getMessageStatusCopy(detail.isRead)
 }
@@ -981,8 +958,10 @@ export function TempEmailManager() {
   const searchParams = useSearchParams()
   const currentSearch = searchParams.toString()
   const [mailboxes, setMailboxes] = useState<MailboxRecord[]>([])
-  const [selectedMailboxId, setSelectedMailboxId] = useState<string | null>(null)
   const [messages, setMessages] = useState<MessageRecord[]>([])
+  const [mailboxFilter, setMailboxFilter] = useState("all")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [mailboxInput, setMailboxInput] = useState("")
   const [emailDomains, setEmailDomains] = useState<DomainRecord[]>([])
   const [selectedDomain, setSelectedDomain] = useState("")
@@ -990,14 +969,13 @@ export function TempEmailManager() {
   const [domainsError, setDomainsError] = useState<string | null>(null)
   const [loadingMailboxes, setLoadingMailboxes] = useState(true)
   const [mailboxesError, setMailboxesError] = useState<string | null>(null)
-  const [mailboxPage, setMailboxPage] = useState(() => getPositivePageParam(searchParams.get("mailboxPage")) ?? 1)
-  const [mailboxTotalPages, setMailboxTotalPages] = useState(1)
   const [mailboxTotalItems, setMailboxTotalItems] = useState(0)
-  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [loadingMessages, setLoadingMessages] = useState(true)
   const [messagesError, setMessagesError] = useState<string | null>(null)
   const [messagePage, setMessagePage] = useState(() => getPositivePageParam(searchParams.get("messagePage")) ?? 1)
   const [messageTotalPages, setMessageTotalPages] = useState(1)
   const [messageTotalItems, setMessageTotalItems] = useState(0)
+  const [messageUnreadItems, setMessageUnreadItems] = useState(0)
   const [creatingMailbox, setCreatingMailbox] = useState(false)
   const [mutatingMessageId, setMutatingMessageId] = useState<string | null>(null)
   const [deletingMailboxId, setDeletingMailboxId] = useState<string | null>(null)
@@ -1013,27 +991,13 @@ export function TempEmailManager() {
   const [messageDetailReloadNonce, setMessageDetailReloadNonce] = useState(0)
   const latestMessageRequestIdRef = useRef(0)
   const latestDetailRequestIdRef = useRef(0)
-  const selectedMailboxIdRef = useRef<string | null>(null)
-  const hasShownMailboxUnavailableToastRef = useRef(false)
-  const isDesktop = useMediaQuery("(min-width: 768px)")
-
-  const updateSelectedMailboxId = useCallback((nextMailboxId: string | null) => {
-    selectedMailboxIdRef.current = nextMailboxId
-    setSelectedMailboxId(nextMailboxId)
-  }, [])
+  const isDesktop = useMediaQuery("(min-width: 1280px)")
 
   const replaceUrlState = useCallback(
-    (next: { mailboxPage?: number; messagePage?: number; messageTab?: MessageDetailTab }) => {
+    (next: { messagePage?: number; messageTab?: MessageDetailTab }) => {
       const params = new URLSearchParams(currentSearch)
-      const nextMailboxPage = next.mailboxPage ?? mailboxPage
       const nextMessagePage = next.messagePage ?? messagePage
       const nextMessageTab = next.messageTab ?? messageDetailTab
-
-      if (nextMailboxPage > 1) {
-        params.set("mailboxPage", String(nextMailboxPage))
-      } else {
-        params.delete("mailboxPage")
-      }
 
       if (nextMessagePage > 1) {
         params.set("messagePage", String(nextMessagePage))
@@ -1050,14 +1014,8 @@ export function TempEmailManager() {
       const query = params.toString()
       router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
     },
-    [currentSearch, mailboxPage, messageDetailTab, messagePage, pathname, router]
+    [currentSearch, messageDetailTab, messagePage, pathname, router]
   )
-
-  function handleMailboxPageChange(nextPage: number) {
-    const normalizedPage = Math.max(1, nextPage)
-    setMailboxPage(normalizedPage)
-    replaceUrlState({ mailboxPage: normalizedPage })
-  }
 
   function handleMessagePageChange(nextPage: number) {
     const normalizedPage = Math.max(1, nextPage)
@@ -1065,9 +1023,23 @@ export function TempEmailManager() {
     replaceUrlState({ messagePage: normalizedPage })
   }
 
+  function handleSearchQueryChange(value: string) {
+    setSearchQuery(value)
+    if (messagePage !== 1) {
+      handleMessagePageChange(1)
+    }
+  }
+
+  function handleMailboxFilterChange(value: string) {
+    setMailboxFilter(value)
+    if (messagePage !== 1) {
+      handleMessagePageChange(1)
+    }
+  }
+
   const selectedMailbox = useMemo(
-    () => mailboxes.find((item) => item.id === selectedMailboxId) ?? null,
-    [mailboxes, selectedMailboxId]
+    () => mailboxes.find((item) => item.id === mailboxFilter) ?? null,
+    [mailboxFilter, mailboxes]
   )
 
   const normalizedMailboxLocalPart = mailboxInput.trim().toLowerCase().replace(/^@+|@+$/g, "")
@@ -1086,7 +1058,6 @@ export function TempEmailManager() {
 
   const canCreateMailbox =
     Boolean(selectedDomain) && !loadingDomains && !creatingMailbox && !mailboxLocalPartTooShort
-  const hasMailboxList = mailboxes.length > 0
 
   const resetMessageDetail = useCallback(() => {
     const nextState = clearMessageDetailState()
@@ -1133,7 +1104,7 @@ export function TempEmailManager() {
     }
   }, [])
 
-  const fetchMailboxes = useCallback(async (currentPage: number, options?: { silent?: boolean }) => {
+  const fetchMailboxes = useCallback(async (options?: { silent?: boolean }) => {
     const isSilent = options?.silent === true
     if (!isSilent) {
       setLoadingMailboxes(true)
@@ -1141,11 +1112,11 @@ export function TempEmailManager() {
     }
 
     try {
-      const res = await fetch(`/api/emails?page=${currentPage}&limit=${TEMP_EMAIL_PAGE_SIZE}`)
-      const body = await readOptionalJson<MailboxResponse & { error?: string }>(res)
+      const res = await fetch("/api/emails/options")
+      const body = await readOptionalJson<MailboxOptionsResponse & { error?: string }>(res)
       if (!res.ok) {
         const message = getResponseErrorMessage(body, "加载邮箱失败")
-        tempEmailReporter.warn("fetch_mailboxes_failed_response", { page: currentPage, status: res.status })
+        tempEmailReporter.warn("fetch_mailboxes_failed_response", { status: res.status })
         if (!isSilent) {
           setMailboxesError(message)
           toast.error(message)
@@ -1154,31 +1125,13 @@ export function TempEmailManager() {
       }
 
       const rows = body?.data || []
-      hasShownMailboxUnavailableToastRef.current = false
       setMailboxesError(null)
       setMailboxes(rows)
-      setMailboxTotalItems(body?.total || 0)
-      setMailboxTotalPages(body?.totalPages || 1)
-      if (body?.page && body.page !== currentPage) {
-        setMailboxPage(body.page)
-      }
-      const currentSelectedMailboxId = selectedMailboxIdRef.current
-      const nextSelectedMailboxId = getNextMailboxSelection(rows, currentSelectedMailboxId)
-      if (nextSelectedMailboxId !== currentSelectedMailboxId) {
-        setMessagePage(1)
-      }
-      updateSelectedMailboxId(nextSelectedMailboxId)
-      if (rows.length === 0) {
-        latestMessageRequestIdRef.current += 1
-        setMessages([])
-        setMessagesError(null)
-        setLoadingMessages(false)
-        setMessageTotalItems(0)
-        setMessageTotalPages(1)
-      }
+      setMailboxTotalItems(rows.length)
+      setMailboxFilter((current) => current === "all" || rows.some((item) => item.id === current) ? current : "all")
     } catch (error) {
       const message = getUserFacingErrorMessage(error, "加载邮箱失败")
-      tempEmailReporter.report("fetch_mailboxes_failed_exception", error, { page: currentPage })
+      tempEmailReporter.report("fetch_mailboxes_failed_exception", error)
       if (!isSilent) {
         setMailboxesError(message)
         toast.error(message)
@@ -1188,27 +1141,12 @@ export function TempEmailManager() {
         setLoadingMailboxes(false)
       }
     }
-  }, [updateSelectedMailboxId])
+  }, [])
 
-  const handleMailboxUnavailable = useCallback(async (showToast = false) => {
-    if (showToast && !hasShownMailboxUnavailableToastRef.current) {
-      hasShownMailboxUnavailableToastRef.current = true
-      tempEmailReporter.warn("selected_mailbox_unavailable")
-      toast.error("当前邮箱已失效，已为你刷新邮箱列表")
-    }
-
-    latestMessageRequestIdRef.current += 1
-    latestDetailRequestIdRef.current += 1
-    setMessages([])
-    setMessagesError(null)
-    setLoadingMessages(false)
-    resetMessageDetail()
-    await fetchMailboxes(1, { silent: !showToast })
-    setMailboxPage(1)
-    replaceUrlState({ mailboxPage: 1 })
-  }, [fetchMailboxes, replaceUrlState, resetMessageDetail])
-
-  const fetchMessages = useCallback(async (mailboxId: string, currentPage: number, options?: { silent?: boolean }) => {
+  const fetchMessages = useCallback(async (
+    currentPage: number,
+    options?: { silent?: boolean; mailboxId?: string | null }
+  ) => {
     const isSilent = options?.silent === true
     const requestId = latestMessageRequestIdRef.current + 1
     latestMessageRequestIdRef.current = requestId
@@ -1218,18 +1156,22 @@ export function TempEmailManager() {
     }
 
     try {
-      const res = await fetch(`/api/emails/${mailboxId}/messages?page=${currentPage}&limit=${TEMP_EMAIL_PAGE_SIZE}`)
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        limit: String(TEMP_EMAIL_PAGE_SIZE),
+      })
+      const effectiveMailboxId = options && "mailboxId" in options
+        ? options.mailboxId
+        : mailboxFilter === "all" ? null : mailboxFilter
+      if (debouncedSearch) params.set("search", debouncedSearch)
+      if (effectiveMailboxId) params.set("mailboxId", effectiveMailboxId)
+
+      const res = await fetch(`/api/emails/messages?${params.toString()}`)
       const body = await readOptionalJson<MessageResponse & { error?: string }>(res)
 
       if (!res.ok) {
-        if (res.status === 404) {
-          tempEmailReporter.warn("fetch_messages_mailbox_missing", { mailboxId })
-          await handleMailboxUnavailable(!isSilent)
-          return
-        }
-
         const message = getResponseErrorMessage(body, "加载邮件失败")
-        tempEmailReporter.warn("fetch_messages_failed_response", { mailboxId, page: currentPage, status: res.status })
+        tempEmailReporter.warn("fetch_messages_failed_response", { page: currentPage, status: res.status })
         if (!isSilent) {
           toast.error(message)
         }
@@ -1240,42 +1182,27 @@ export function TempEmailManager() {
         return
       }
 
-      if (!body || latestMessageRequestIdRef.current !== requestId || body.mailbox.id !== mailboxId) {
+      if (!body || latestMessageRequestIdRef.current !== requestId) {
         return
       }
 
       const nextMessages = body.data || []
       const nextMessageCount = typeof body.total === "number" ? body.total : nextMessages.length
       setMessageTotalItems(nextMessageCount)
+      setMessageUnreadItems(body.unread || 0)
       setMessageTotalPages(body.totalPages || 1)
       if (body.page && body.page !== currentPage) {
         setMessagePage(body.page)
       }
       setMessages(nextMessages)
       setMessagesError(null)
-      setMailboxes((prev) => {
-        let didUpdate = false
-        const unreadCount = nextMessages.filter((item) => !item.isRead).length
-        const next = prev.map((item) => {
-          if (item.id !== mailboxId) {
-            return item
-          }
-          didUpdate = true
-          return {
-            ...item,
-            messageCount: nextMessageCount,
-            unreadCount,
-          }
-        })
-        return didUpdate ? next : prev
-      })
       setSelectedMessage((current) => {
         if (!current) return current
         return nextMessages.find((item) => item.id === current.id) ?? null
       })
     } catch (error) {
       const message = getUserFacingErrorMessage(error, "加载邮件失败")
-      tempEmailReporter.report("fetch_messages_failed_exception", error, { mailboxId, page: currentPage })
+      tempEmailReporter.report("fetch_messages_failed_exception", error, { page: currentPage })
       if (!isSilent) {
         toast.error(message)
       }
@@ -1288,7 +1215,7 @@ export function TempEmailManager() {
         setLoadingMessages(false)
       }
     }
-  }, [handleMailboxUnavailable])
+  }, [debouncedSearch, mailboxFilter])
 
   useEffect(() => {
     let cancelled = false
@@ -1309,16 +1236,19 @@ export function TempEmailManager() {
 
     queueMicrotask(() => {
       if (!cancelled) {
-        void fetchMailboxes(mailboxPage)
+        void fetchMailboxes()
       }
     })
 
     return () => {
       cancelled = true
     }
-  }, [fetchMailboxes, mailboxPage])
+  }, [fetchMailboxes])
 
-  const canRetryMessages = !!selectedMailboxId && !loadingMessages
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(searchQuery.trim()), 250)
+    return () => window.clearTimeout(timeout)
+  }, [searchQuery])
 
   useEffect(() => {
     let cancelled = false
@@ -1330,24 +1260,13 @@ export function TempEmailManager() {
 
       latestDetailRequestIdRef.current += 1
       resetMessageDetail()
-
-      if (!selectedMailboxId) {
-        latestMessageRequestIdRef.current += 1
-        setMessages([])
-        setMessagesError(null)
-        setLoadingMessages(false)
-        setMessageTotalItems(0)
-        setMessageTotalPages(1)
-        return
-      }
-
-      void fetchMessages(selectedMailboxId, messagePage)
+      void fetchMessages(messagePage)
     })
 
     return () => {
       cancelled = true
     }
-  }, [fetchMessages, messagePage, resetMessageDetail, selectedMailboxId])
+  }, [fetchMessages, messagePage, resetMessageDetail])
 
   const handleRetryMessageDetail = useCallback(() => {
     if (!selectedMessage) {
@@ -1454,21 +1373,13 @@ export function TempEmailManager() {
   const selectedDetailTab = getMessageDetailSelectedTab(messageDetail, messageDetailTab)
   const hasSelectedMessage = getMessageDialogOpen(selectedMessage)
   const messageDialogOpen = hasSelectedMessage && !isDesktop
-  const visibleUnreadMessages = messages.filter((message) => !message.isRead).length
-  const mailboxStatusDescription = selectedMailbox
-    ? `${selectedMailbox.messageCount} 封 / ${selectedMailbox.unreadCount} 未读`
-    : hasMailboxList
-      ? "从左侧队列选择"
-      : "先创建收件箱"
+  const hasActiveFilters = Boolean(searchQuery.trim()) || mailboxFilter !== "all"
+  const inboxScopeLabel = selectedMailbox?.emailAddress || "全部邮箱"
   const domainMetricLabel = loadingDomains ? "同步中" : domainsError ? "异常" : emailDomains.length
   const domainMetricTone: TempEmailMetricTone = domainsError ? "danger" : emailDomains.length > 0 ? "good" : "neutral"
-  const messageMetricTone: TempEmailMetricTone = visibleUnreadMessages > 0 ? "warning" : selectedMailbox ? "good" : "neutral"
+  const messageMetricTone: TempEmailMetricTone = messageUnreadItems > 0 ? "warning" : messageTotalItems > 0 ? "good" : "neutral"
 
   useEffect(() => {
-    if (!selectedMailboxId) {
-      return
-    }
-
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "visible") {
         return
@@ -1480,8 +1391,8 @@ export function TempEmailManager() {
         return
       }
 
-      void fetchMailboxes(mailboxPage, { silent: true }).then(() =>
-        fetchMessages(selectedMailboxId, messagePage, { silent: true })
+      void fetchMailboxes({ silent: true }).then(() =>
+        fetchMessages(messagePage, { silent: true })
       )
     }, 15000)
 
@@ -1491,10 +1402,8 @@ export function TempEmailManager() {
     fetchMessages,
     loadingMailboxes,
     loadingMessages,
-    mailboxPage,
     messageDialogOpen,
     messagePage,
-    selectedMailboxId,
   ])
 
   function handleGenerateRandomPrefix() {
@@ -1535,11 +1444,9 @@ export function TempEmailManager() {
 
       toast.success("临时邮箱已创建")
       setMailboxInput("")
-      if (mailboxPage !== 1) {
-        handleMailboxPageChange(1)
-      } else {
-        await fetchMailboxes(1)
-      }
+      setMessagePage(1)
+      replaceUrlState({ messagePage: 1 })
+      await Promise.all([fetchMailboxes(), fetchMessages(1, { silent: true })])
     } catch (error) {
       tempEmailReporter.report("create_mailbox_failed_exception", error, {
         domain: selectedDomain,
@@ -1562,7 +1469,8 @@ export function TempEmailManager() {
       }
 
       setMessages((prev) => prev.map((item) => (item.id === messageId ? { ...item, isRead: true } : item)))
-      await fetchMailboxes(mailboxPage, { silent: true })
+      setMessageUnreadItems((current) => Math.max(0, current - 1))
+      await fetchMailboxes({ silent: true })
       toast.success("邮件已标记为已读")
     } catch (error) {
       tempEmailReporter.report("mark_message_read_failed_exception", error, { messageId })
@@ -1570,7 +1478,7 @@ export function TempEmailManager() {
     } finally {
       setMutatingMessageId(null)
     }
-  }, [fetchMailboxes, mailboxPage])
+  }, [fetchMailboxes])
 
   useEffect(() => {
     let cancelled = false
@@ -1660,13 +1568,14 @@ export function TempEmailManager() {
       setMessages((prev) => prev.filter((item) => item.id !== messageId))
       setMessageTotalItems(nextMessageTotal)
       setMessageTotalPages(Math.max(1, Math.ceil(nextMessageTotal / TEMP_EMAIL_PAGE_SIZE)))
-      await fetchMailboxes(mailboxPage, { silent: true })
-      if (selectedMailboxId) {
-        if (deleteState.nextPage !== messagePage) {
-          handleMessagePageChange(deleteState.nextPage)
-        } else if (deleteState.shouldRefetch) {
-          await fetchMessages(selectedMailboxId, deleteState.nextPage, { silent: true })
-        }
+      if (!messages.find((item) => item.id === messageId)?.isRead) {
+        setMessageUnreadItems((current) => Math.max(0, current - 1))
+      }
+      await fetchMailboxes({ silent: true })
+      if (deleteState.nextPage !== messagePage) {
+        handleMessagePageChange(deleteState.nextPage)
+      } else if (deleteState.shouldRefetch) {
+        await fetchMessages(deleteState.nextPage, { silent: true })
       }
       setPendingDeleteMessage(null)
       toast.success("邮件已删除")
@@ -1690,36 +1599,16 @@ export function TempEmailManager() {
       }
 
       setPendingDeleteMailbox(null)
-      const deleteState = getDeleteSuccessState(mailboxes.length - 1, mailboxPage)
-      const nextMailboxTotal = Math.max(0, mailboxTotalItems - 1)
-      setMailboxTotalItems(nextMailboxTotal)
-      setMailboxTotalPages(Math.max(1, Math.ceil(nextMailboxTotal / TEMP_EMAIL_PAGE_SIZE)))
-      if (selectedMailboxId === mailbox.id) {
-        latestMessageRequestIdRef.current += 1
-        latestDetailRequestIdRef.current += 1
-        updateSelectedMailboxId(null)
-        setMessages([])
-        setMessagesError(null)
-        setLoadingMessages(false)
-        setMessagePage(1)
-        replaceUrlState({ messagePage: 1 })
-        setMessageTotalItems(0)
-        setMessageTotalPages(1)
-        resetMessageDetail()
+      if (mailboxFilter === mailbox.id) {
+        setMailboxFilter("all")
       }
-
-      if (deleteState.nextPage !== mailboxPage) {
-        handleMailboxPageChange(deleteState.nextPage)
-      } else {
-        const nextMailboxes = mailboxes.filter((item) => item.id !== mailbox.id)
-        setMailboxes(nextMailboxes)
-        if (selectedMailboxId === mailbox.id) {
-          updateSelectedMailboxId(nextMailboxes[0]?.id ?? null)
-        }
-        if (deleteState.shouldRefetch) {
-          await fetchMailboxes(deleteState.nextPage, { silent: true })
-        }
-      }
+      setMessagePage(1)
+      replaceUrlState({ messagePage: 1 })
+      resetMessageDetail()
+      await Promise.all([
+        fetchMailboxes({ silent: true }),
+        fetchMessages(1, { silent: true, mailboxId: mailboxFilter === mailbox.id ? null : undefined }),
+      ])
       toast.success("邮箱已删除")
     } catch (error) {
       tempEmailReporter.report("delete_mailbox_failed_exception", error, { mailboxId: mailbox.id })
@@ -1895,42 +1784,37 @@ export function TempEmailManager() {
         <div className="flex flex-col gap-4 p-5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0 space-y-1">
             <ConsoleKicker>Inbox operations</ConsoleKicker>
-            <h2 className="text-xl font-semibold sm:text-2xl">临时邮箱工作台</h2>
+            <h2 className="text-xl font-semibold sm:text-2xl">临时邮箱收件箱</h2>
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-              创建一次性收件箱，快速检查未读消息，并在右侧保留邮件正文、附件和源码上下文。
+              所有临时邮箱的来信按接收时间汇总，可直接搜索或按收件邮箱筛选。
             </p>
           </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => void fetchMailboxes(mailboxPage)}
-            disabled={loadingMailboxes}
+            onClick={() => void Promise.all([fetchMailboxes(), fetchMessages(messagePage)])}
+            disabled={loadingMailboxes || loadingMessages}
             className="w-full sm:w-auto"
           >
-            <RefreshCw className={cn("h-3.5 w-3.5", loadingMailboxes && "animate-spin")} />
+            <RefreshCw className={cn("h-3.5 w-3.5", (loadingMailboxes || loadingMessages) && "animate-spin")} />
             刷新收件箱
           </Button>
         </div>
-        <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-4">
+        <div className="hidden gap-3 p-5 sm:grid sm:grid-cols-2 xl:grid-cols-4">
+          <ConsoleMetric label="邮箱总数" value={mailboxTotalItems} description="可用于接收临时邮件" icon={Inbox} />
           <ConsoleMetric
-            label="邮箱总数"
-            value={mailboxTotalItems}
-            description={loadingMailboxes ? "正在同步邮箱列表" : `${mailboxes.length} 个显示在当前页`}
-            icon={Inbox}
-          />
-          <ConsoleMetric
-            label="当前收件箱"
-            value={selectedMailbox ? selectedMailbox.emailAddress : "未选择"}
-            description={mailboxStatusDescription}
-            icon={Clock3}
+            label="当前范围"
+            value={inboxScopeLabel}
+            description={debouncedSearch ? `搜索：${debouncedSearch}` : "按最新接收时间排列"}
+            icon={Search}
             tone={selectedMailbox ? "good" : "neutral"}
           />
           <ConsoleMetric
-            label="消息队列"
-            value={selectedMailbox ? messageTotalItems : 0}
-            description={selectedMailbox ? `${visibleUnreadMessages} 封未读显示中` : "选择邮箱后同步消息"}
-            icon={Activity}
+            label="邮件"
+            value={messageTotalItems}
+            description={`${messageUnreadItems} 封未读`}
+            icon={Inbox}
             tone={messageMetricTone}
           />
           <ConsoleMetric
@@ -1943,306 +1827,206 @@ export function TempEmailManager() {
         </div>
       </section>
 
-      <div className={cn(consoleSurfaceClassName, "grid min-h-[calc(100vh-18rem)] overflow-hidden lg:grid-cols-[22rem_minmax(22rem,0.9fr)_minmax(30rem,1.25fr)]")}>
-      <section className="flex min-h-0 flex-col shadow-[0_1px_0_0_rgba(0,0,0,0.08)] lg:shadow-[1px_0_0_0_rgba(0,0,0,0.08)]">
-        <div className="p-5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
-          <div className="space-y-1">
-            <h2 className="text-base font-semibold">创建临时邮箱</h2>
-            <p className="text-sm text-muted-foreground">快速生成临时邮箱地址</p>
-          </div>
+      <div className={cn(consoleSurfaceClassName, "grid min-h-[calc(100vh-18rem)] overflow-hidden xl:grid-cols-[18rem_minmax(20rem,0.9fr)_minmax(0,1.25fr)]")}>
+        <section className="order-2 flex min-h-0 flex-col shadow-[0_1px_0_0_rgba(0,0,0,0.08)] xl:order-1 xl:shadow-[1px_0_0_0_rgba(0,0,0,0.08)]">
+          <div className="p-5">
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold">创建临时邮箱</h2>
+              <p className="text-sm text-muted-foreground">创建后即可在右侧接收来信</p>
+            </div>
 
-          <div className="mt-5 space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="temp-email-prefix" className="text-sm font-medium">
-                邮箱前缀
-              </label>
-              <div className="flex items-center gap-2">
+            <div className="mt-5 space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="temp-email-prefix" className="text-sm font-medium">邮箱前缀</label>
                 <Input
                   id="temp-email-prefix"
                   name="mailboxPrefix"
                   aria-label="邮箱前缀"
-                  placeholder="例如：project-test…"
+                  placeholder="例如：project-test"
                   autoComplete="off"
                   spellCheck={false}
                   value={mailboxInput}
-                  onChange={(e) => setMailboxInput(e.target.value)}
-                  className="h-10 min-w-0"
+                  onChange={(event) => setMailboxInput(event.target.value)}
+                  className="h-10"
                 />
-                <span className="text-sm text-muted-foreground">@</span>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="temp-email-domain" className="text-sm font-medium">邮箱域名</label>
                 <Select value={selectedDomain} onValueChange={setSelectedDomain} disabled={emailDomains.length < 1}>
-                  <SelectTrigger id="temp-email-domain" aria-label="邮箱域名" className="h-10 w-32 shrink-0">
-                    <SelectValue placeholder="域名…" />
+                  <SelectTrigger id="temp-email-domain" aria-label="邮箱域名" className="h-10 w-full">
+                    <SelectValue placeholder="选择域名" />
                   </SelectTrigger>
                   <SelectContent>
                     {emailDomains.map((domain) => (
-                      <SelectItem key={domain.host} value={domain.host}>
-                        {domain.host}
-                      </SelectItem>
+                      <SelectItem key={domain.host} value={domain.host}>{domain.host}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+
+              {mailboxPreview && <p className={cn(consoleInsetClassName, "break-all px-3 py-2 font-mono text-xs")}>{mailboxPreview}</p>}
+              {mailboxLocalPartTooShort && (
+                <p className="text-xs text-destructive">当前域名要求邮箱前缀至少 {selectedMinLocalPartLength} 个字符。</p>
+              )}
+
+              <Button onClick={handleCreateMailbox} disabled={!canCreateMailbox} className="h-10 w-full">
+                <MailPlus className="h-4 w-4" />
+                {creatingMailbox ? "创建中…" : "创建邮箱"}
+              </Button>
+
+              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <button
+                  type="button"
+                  onClick={handleGenerateRandomPrefix}
+                  className="dashboard-focus-ring inline-flex items-center gap-1 rounded-sm hover:text-foreground"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  随机前缀
+                </button>
+                <span className="truncate">至少 {selectedMinLocalPartLength} 个字符</span>
+              </div>
+
+              {loadingDomains ? (
+                <p className="text-xs text-muted-foreground">正在载入可用邮箱域名…</p>
+              ) : domainsError ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-destructive">
+                  <span>{domainsError}</span>
+                  <Button type="button" variant="link" size="sm" onClick={() => fetchDomains()} className="h-auto p-0 text-destructive">重试</Button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        <section className="order-1 flex min-h-0 flex-col shadow-[0_1px_0_0_rgba(0,0,0,0.08)] xl:order-2 xl:shadow-[1px_0_0_0_rgba(0,0,0,0.08)]">
+          <div className="space-y-3 p-4 shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold">收件箱</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">{messageTotalItems} 封邮件，{messageUnreadItems} 封未读</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                {selectedMailbox && (
+                  <>
+                    <Button variant="ghost" size="icon-sm" onClick={() => handleCopy(selectedMailbox.emailAddress, "邮箱地址已复制")} aria-label="复制筛选邮箱" title="复制筛选邮箱">
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" className="text-destructive hover:bg-destructive/10" onClick={() => setPendingDeleteMailbox(selectedMailbox)} disabled={deletingMailboxId === selectedMailbox.id} aria-label="删除筛选邮箱" title="删除筛选邮箱">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
+                )}
+                <Button variant="outline" size="icon-sm" onClick={() => void fetchMessages(messagePage)} disabled={loadingMessages} aria-label="刷新邮件" title="刷新邮件">
+                  <RefreshCw className={cn("h-3.5 w-3.5", loadingMessages && "animate-spin")} />
+                </Button>
+              </div>
             </div>
 
-            <Button onClick={handleCreateMailbox} disabled={!canCreateMailbox} className="h-10 w-full">
-              <MailPlus className="h-4 w-4" />
-              {creatingMailbox ? "创建中…" : "创建邮箱"}
-            </Button>
-
-            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-              <button
-                type="button"
-                onClick={handleGenerateRandomPrefix}
-                className="dashboard-focus-ring inline-flex items-center gap-1 rounded-sm hover:text-foreground"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                随机前缀
-              </button>
-              <span className="truncate">前缀 ≥ {selectedMinLocalPartLength}</span>
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_12rem] lg:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_12rem]">
+              <div className="relative min-w-0">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => handleSearchQueryChange(event.target.value)}
+                  placeholder="搜索发件人、主题或正文"
+                  aria-label="搜索收件箱"
+                  className="h-9 pl-9"
+                />
+              </div>
+              <Select value={mailboxFilter} onValueChange={handleMailboxFilterChange} disabled={loadingMailboxes || mailboxes.length === 0}>
+                <SelectTrigger aria-label="按临时邮箱筛选" className="h-9 w-full">
+                  <SelectValue placeholder="全部邮箱" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部邮箱</SelectItem>
+                  {mailboxes.map((mailbox) => (
+                    <SelectItem key={mailbox.id} value={mailbox.id}>{mailbox.emailAddress}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            {mailboxPreview && <p className={cn(consoleInsetClassName, "break-all px-3 py-2 font-mono text-xs")}>{mailboxPreview}</p>}
-            {mailboxLocalPartTooShort && (
-              <p className="text-xs text-destructive">当前域名要求邮箱前缀至少 {selectedMinLocalPartLength} 个字符。</p>
+            {mailboxesError && (
+              <div className="flex items-center justify-between gap-3 text-xs text-destructive">
+                <span>{mailboxesError}</span>
+                <Button type="button" variant="link" size="sm" onClick={() => fetchMailboxes()} className="h-auto p-0 text-destructive">重试</Button>
+              </div>
             )}
-            {loadingDomains ? (
-              <p className="text-xs text-muted-foreground">正在载入可用邮箱域名…</p>
-            ) : domainsError ? (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-destructive">
-                <span>{domainsError}</span>
-                <Button type="button" variant="link" size="sm" onClick={() => fetchDomains()} className="h-auto p-0 text-destructive">
-                  重试
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex items-center justify-between px-5 py-4 shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
-            <h3 className="text-base font-semibold">邮箱列表</h3>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-sm"
-              onClick={() => void fetchMailboxes(mailboxPage)}
-              disabled={loadingMailboxes}
-              aria-label="刷新邮箱列表"
-              title="刷新邮箱列表"
-            >
-              <RefreshCw className={`h-3.5 w-3.5${loadingMailboxes ? " animate-spin" : ""}`} />
-            </Button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto p-3">
-            {loadingMailboxes ? (
-              <div className="flex h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 text-sm text-muted-foreground">正在加载…</div>
-            ) : mailboxesError ? (
-              <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed bg-destructive/5 px-4 text-center text-sm text-destructive">
-                <p>{mailboxesError}</p>
-                <Button type="button" variant="outline" size="sm" onClick={() => fetchMailboxes(mailboxPage)}>
-                  重试
-                </Button>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {loadingMessages ? (
+              <div className="flex h-full min-h-80 items-center justify-center text-sm text-muted-foreground">正在同步邮件…</div>
+            ) : messagesError ? (
+              <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-destructive">
+                <p>{messagesError}</p>
+                <Button type="button" variant="outline" size="sm" onClick={() => fetchMessages(messagePage)} disabled={loadingMessages}>重试</Button>
               </div>
-            ) : mailboxes.length === 0 ? (
-              <div className="flex h-40 items-center justify-center rounded-lg border border-dashed bg-muted/5 px-4 text-center text-sm text-muted-foreground">
-                还没有邮箱。先生成一个地址。
+            ) : messages.length === 0 ? (
+              <div className="flex h-full min-h-80 items-center justify-center px-6 text-center">
+                <div className="max-w-xs space-y-3">
+                  <Inbox className="mx-auto h-5 w-5 text-muted-foreground" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{hasActiveFilters ? "没有匹配的邮件" : mailboxes.length === 0 ? "先创建一个临时邮箱" : "暂时没有新邮件"}</p>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      {hasActiveFilters ? "调整搜索词或邮箱筛选后再试。" : mailboxes.length === 0 ? "创建后，收到的邮件会直接显示在这里。" : "新邮件到达后会按接收时间显示。"}
+                    </p>
+                  </div>
+                  {hasActiveFilters && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => { handleSearchQueryChange(""); handleMailboxFilterChange("all") }}>
+                      <X className="h-3.5 w-3.5" />
+                      清除筛选
+                    </Button>
+                  )}
+                </div>
               </div>
             ) : (
-              <div className="space-y-2">
-                {mailboxes.map((mailbox) => (
-                  <div
-                    key={mailbox.id}
-                    className={`group rounded-lg p-3 shadow-[0_0_0_1px_rgba(0,0,0,0.08)] transition-colors ${
-                      mailbox.id === selectedMailboxId
-                        ? "bg-muted/[0.36] shadow-[0_0_0_1px_rgba(0,114,245,0.42)]"
-                        : "bg-background hover:bg-muted/25"
-                    }`}
+              <div className="divide-y">
+                {messages.map((message) => (
+                  <button
+                    key={message.id}
+                    type="button"
+                    onClick={() => handleOpenMessage(message)}
+                    className={cn(
+                      "dashboard-focus-ring group w-full rounded-none px-4 py-3.5 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40",
+                      isSelectedMessage(message, selectedMessage) && "bg-muted/[0.36] shadow-[inset_2px_0_0_#0072F5]"
+                    )}
                   >
-                    <div className="flex items-start gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (mailbox.id !== selectedMailboxId) {
-                            handleMessagePageChange(1)
-                          }
-                          updateSelectedMailboxId(mailbox.id)
-                        }}
-                        className="dashboard-focus-ring min-w-0 flex-1 rounded-md text-left"
-                      >
-                        <p className={`break-all font-mono text-sm ${mailbox.id === selectedMailboxId ? "font-medium text-foreground" : "text-foreground"}`}>
-                          {mailbox.emailAddress}
-                        </p>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span>{mailbox.messageCount} 封邮件</span>
-                          {mailbox.unreadCount > 0 && <ConsoleStatusBadge label={`${mailbox.unreadCount} 未读`} tone="warning" />}
+                    <div className="flex items-start gap-3">
+                      <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", message.isRead ? "bg-transparent" : "bg-[#0072F5]")} />
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className={cn("truncate text-sm", !message.isRead && "font-semibold")}>{getMessageSenderPrimary(message)}</p>
+                          <span className="shrink-0 text-xs text-muted-foreground">{formatDate(message.receivedAt)}</span>
                         </div>
-                      </button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="h-7 w-7 shrink-0 text-destructive opacity-100 hover:bg-destructive/10 sm:opacity-0 sm:group-hover:opacity-100"
-                        onClick={() => setPendingDeleteMailbox(mailbox)}
-                        disabled={deletingMailboxId === mailbox.id}
-                        aria-label="删除邮箱"
-                        title="删除邮箱"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                        <p className={cn("line-clamp-1 text-sm text-foreground", !message.isRead && "font-medium")}>{getMessageTitle(message)}</p>
+                        <p className="line-clamp-1 text-xs text-muted-foreground">{getMessagePreviewForList(message)}</p>
+                        <div className="flex items-center justify-between gap-3 pt-1">
+                          <span className="truncate font-mono text-[11px] text-muted-foreground">收件：{message.mailboxEmailAddress}</span>
+                          <div className="flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                            {!message.isRead && (
+                              <Button type="button" variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); handleMarkRead(message.id) }} disabled={mutatingMessageId === message.id} className="h-7 px-2 text-xs">已读</Button>
+                            )}
+                            <Button type="button" variant="ghost" size="icon-sm" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={(event) => { event.stopPropagation(); setPendingDeleteMessage(message) }} aria-label="删除邮件" title="删除邮件">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
           </div>
-          {!loadingMailboxes && !mailboxesError && (
-            <PaginationFooter
-              label="邮箱"
-              page={mailboxPage}
-              totalPages={mailboxTotalPages}
-              totalItems={mailboxTotalItems}
-              loading={loadingMailboxes}
-              onPageChange={handleMailboxPageChange}
-            />
+          {!loadingMessages && !messagesError && (
+            <PaginationFooter label="邮件" page={messagePage} totalPages={messageTotalPages} totalItems={messageTotalItems} loading={loadingMessages} onPageChange={handleMessagePageChange} />
           )}
-        </div>
-      </section>
+        </section>
 
-      <section className="flex min-h-0 flex-col shadow-[0_1px_0_0_rgba(0,0,0,0.08)] lg:shadow-[1px_0_0_0_rgba(0,0,0,0.08)]">
-        <div className="p-5 shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h3 className="text-base font-semibold">邮件列表</h3>
-              <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                {selectedMailbox?.emailAddress || "选择一个邮箱"}
-              </p>
-            </div>
-            {selectedMailbox && (
-              <div className="flex shrink-0 gap-2">
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={() => void fetchMessages(selectedMailbox.id, messagePage)}
-                  disabled={loadingMessages}
-                  aria-label="刷新邮件"
-                  title="刷新邮件"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5${loadingMessages ? " animate-spin" : ""}`} />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={() => handleCopy(selectedMailbox.emailAddress, "邮箱地址已复制")}
-                  aria-label="复制邮箱地址"
-                  title="复制邮箱地址"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-auto">
-          {!selectedMailbox ? (
-            <div className="flex h-full min-h-80 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-              {hasMailboxList ? "从邮箱列表中选择一个地址。" : "创建邮箱后，这里会显示收件箱。"}
-            </div>
-          ) : loadingMessages ? (
-            <div className="flex h-full min-h-80 items-center justify-center text-sm text-muted-foreground">正在同步邮件…</div>
-          ) : messagesError ? (
-            <div className="flex h-full min-h-80 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-destructive">
-              <p>{messagesError}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => selectedMailbox && fetchMessages(selectedMailbox.id, messagePage)}
-                disabled={!canRetryMessages}
-              >
-                重试
-              </Button>
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex h-full min-h-80 items-center justify-center px-6 text-center text-sm text-muted-foreground">收件箱空空如也。</div>
-          ) : (
-            <div className="divide-y">
-              {messages.map((message) => (
-                <button
-                  key={message.id}
-                  type="button"
-                  onClick={() => handleOpenMessage(message)}
-                  className={`dashboard-focus-ring group w-full rounded-none px-5 py-4 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 ${
-                    isSelectedMessage(message, selectedMessage) ? "bg-muted/[0.36] shadow-[inset_2px_0_0_#0072F5]" : ""
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${message.isRead ? "bg-transparent" : "bg-[#0072F5]"}`} />
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="truncate text-sm font-medium">{getMessageSenderPrimary(message)}</p>
-                        <span className="shrink-0 text-xs text-muted-foreground">{formatDate(message.receivedAt)}</span>
-                      </div>
-                      <p className={`line-clamp-1 text-sm ${message.isRead ? "text-foreground" : "font-medium text-foreground"}`}>
-                        {getMessageTitle(message)}
-                      </p>
-                      <p className="line-clamp-1 text-xs text-muted-foreground">{getMessagePreviewForList(message)}</p>
-                      <div className="flex items-center justify-between gap-3 pt-1">
-                        <span className="truncate text-xs text-muted-foreground">{getMessageSenderSecondaryLine(message)}</span>
-                        <div className="flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100">
-                          {!message.isRead && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleMarkRead(message.id)
-                              }}
-                              className="h-7 px-2 text-xs"
-                            >
-                              已读
-                            </Button>
-                          )}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            className="h-7 w-7 text-destructive hover:bg-destructive/10"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setPendingDeleteMessage(message)
-                            }}
-                            aria-label="删除邮件"
-                            title="删除邮件"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        {selectedMailbox && !loadingMessages && !messagesError && (
-          <PaginationFooter
-            label="邮件"
-            page={messagePage}
-            totalPages={messageTotalPages}
-            totalItems={messageTotalItems}
-            loading={loadingMessages}
-            onPageChange={handleMessagePageChange}
-          />
-        )}
-      </section>
-
-      <section className="hidden min-h-0 flex-col lg:flex">
-        {renderDesktopMessageDetailPanel()}
-      </section>
+        <section className="order-3 hidden min-h-0 flex-col xl:flex">{renderDesktopMessageDetailPanel()}</section>
       </div>
     </div>
   )

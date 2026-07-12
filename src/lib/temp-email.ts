@@ -465,6 +465,92 @@ export async function listTempMailboxesForUser(userId: string, page: number, lim
   }
 }
 
+export async function listTempMailboxOptionsForUser(userId: string) {
+  return db
+    .select({
+      id: tempMailbox.id,
+      emailAddress: tempMailbox.emailAddress,
+      domain: tempMailbox.domain,
+      createdAt: tempMailbox.createdAt,
+      unreadCount: sql<number>`coalesce(sum(case when ${tempEmailMessage.isRead} = 0 then 1 else 0 end), 0)`,
+      messageCount: sql<number>`count(${tempEmailMessage.id})`,
+    })
+    .from(tempMailbox)
+    .leftJoin(tempEmailMessage, eq(tempEmailMessage.mailboxId, tempMailbox.id))
+    .where(eq(tempMailbox.userId, userId))
+    .groupBy(tempMailbox.id)
+    .orderBy(desc(tempMailbox.createdAt))
+}
+
+export async function listTempMessagesForUser(
+  userId: string,
+  page: number,
+  limit: number,
+  options?: { search?: string | null; mailboxId?: string | null }
+) {
+  const offset = (page - 1) * limit
+  const searchTerm = buildSearchTerm(options?.search)
+  const whereClause = and(
+    eq(tempMailbox.userId, userId),
+    options?.mailboxId ? eq(tempMailbox.id, options.mailboxId) : undefined,
+    searchTerm
+      ? or(
+        like(tempMailbox.emailAddress, searchTerm),
+        like(tempEmailMessage.subject, searchTerm),
+        like(tempEmailMessage.from, searchTerm),
+        like(tempEmailMessage.fromName, searchTerm),
+        like(tempEmailMessage.text, searchTerm)
+      )
+      : undefined
+  )
+
+  const [totalRes, unreadRes, rows] = await Promise.all([
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(tempEmailMessage)
+      .innerJoin(tempMailbox, eq(tempMailbox.id, tempEmailMessage.mailboxId))
+      .where(whereClause)
+      .get(),
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(tempEmailMessage)
+      .innerJoin(tempMailbox, eq(tempMailbox.id, tempEmailMessage.mailboxId))
+      .where(and(whereClause, eq(tempEmailMessage.isRead, false)))
+      .get(),
+    db
+      .select({
+        id: tempEmailMessage.id,
+        mailboxId: tempMailbox.id,
+        mailboxEmailAddress: tempMailbox.emailAddress,
+        messageId: tempEmailMessage.messageId,
+        from: tempEmailMessage.from,
+        fromName: tempEmailMessage.fromName,
+        subject: tempEmailMessage.subject,
+        text: tempEmailMessage.text,
+        html: tempEmailMessage.html,
+        receivedAt: tempEmailMessage.receivedAt,
+        isRead: tempEmailMessage.isRead,
+        hasAttachments: sql<number>`exists(select 1 from temp_email_attachment a where a.message_id = ${tempEmailMessage.id})`,
+      })
+      .from(tempEmailMessage)
+      .innerJoin(tempMailbox, eq(tempMailbox.id, tempEmailMessage.mailboxId))
+      .where(whereClause)
+      .orderBy(desc(tempEmailMessage.receivedAt), desc(tempEmailMessage.createdAt))
+      .limit(limit)
+      .offset(offset),
+  ])
+
+  const total = totalRes?.count ?? 0
+  return {
+    data: rows.map((row) => ({ ...row, hasAttachments: Boolean(row.hasAttachments) })),
+    total,
+    unread: unreadRes?.count ?? 0,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  }
+}
+
 export async function listTempMessagesForMailbox(userId: string, mailboxId: string, page: number, limit: number) {
   const mailbox = await db
     .select({ id: tempMailbox.id, emailAddress: tempMailbox.emailAddress })
